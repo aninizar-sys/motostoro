@@ -1,0 +1,2762 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MotosToro — Panel Administrativo</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --negro: #0a0a0a;
+    --negro2: #151515;
+    --negro3: #1e1e1e;
+    --rojo: #e3242b;
+    --rojo-dim: #7a1418;
+    --carbon: #8a8a8a;
+    --carbon-claro: #b8b8b8;
+    --blanco: #f5f5f5;
+    --verde: #3aa65b;
+    --borde: #2a2a2a;
+    font-family: 'Segoe UI', Arial, sans-serif;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{background:var(--negro); color:var(--blanco); min-height:100vh;}
+  ::-webkit-scrollbar{width:8px; height:8px;}
+  ::-webkit-scrollbar-thumb{background:var(--borde); border-radius:4px;}
+
+  /* ---------- LOGIN ---------- */
+  #login-screen{
+    min-height:100vh; display:flex; align-items:center; justify-content:center;
+    background: radial-gradient(circle at 50% 20%, #1a0a0a 0%, #0a0a0a 70%);
+  }
+  .login-box{
+    background:var(--negro2); border:1px solid var(--borde); border-radius:12px;
+    padding:40px 36px; width:340px; max-width:88vw; text-align:center;
+  }
+  .login-box h1{
+    font-size:28px; letter-spacing:1px; margin-bottom:4px;
+  }
+  .login-box h1 span{color:var(--rojo);}
+  .login-box p.sub{color:var(--carbon); font-size:13px; margin-bottom:24px;}
+  .login-box input{
+    width:100%; padding:12px 14px; margin-bottom:12px; background:var(--negro3);
+    border:1px solid var(--borde); border-radius:8px; color:var(--blanco); font-size:14px;
+  }
+  .login-box input:focus{outline:none; border-color:var(--rojo);}
+  .btn{
+    background:var(--rojo); color:#fff; border:none; padding:12px 18px; border-radius:8px;
+    font-weight:600; font-size:14px; cursor:pointer; width:100%; letter-spacing:.3px;
+    transition:background .15s;
+  }
+  .btn:hover{background:#c91e24;}
+  .btn.secundario{background:var(--negro3); border:1px solid var(--borde); color:var(--blanco);}
+  .btn.secundario:hover{background:#262626;}
+  .btn.chico{width:auto; padding:8px 14px; font-size:13px;}
+  .btn:disabled{opacity:.5; cursor:not-allowed;}
+  #login-error{color:var(--rojo); font-size:13px; margin-top:10px; min-height:16px;}
+
+  /* ---------- APP LAYOUT ---------- */
+  #app{display:none; min-height:100vh; grid-template-columns:220px 1fr; display:grid;}
+  aside{
+    background:var(--negro2); border-right:1px solid var(--borde);
+    padding:24px 0; display:flex; flex-direction:column;
+  }
+  .logo-mini{padding:0 20px 20px; border-bottom:1px solid var(--borde); margin-bottom:16px;}
+  .logo-mini div{font-size:20px; font-weight:800; letter-spacing:1px;}
+  .logo-mini span{color:var(--rojo);}
+  .logo-mini small{display:block; color:var(--carbon); font-size:11px; margin-top:4px;}
+  nav{flex:1;}
+  nav button{
+    display:flex; align-items:center; gap:10px; width:100%; text-align:left;
+    background:none; border:none; color:var(--carbon-claro); padding:12px 20px;
+    font-size:14px; cursor:pointer; border-left:3px solid transparent;
+  }
+  nav button:hover{background:var(--negro3); color:var(--blanco);}
+  nav button.activo{background:var(--negro3); color:#fff; border-left-color:var(--rojo);}
+  .sidebar-footer{padding:14px 20px; border-top:1px solid var(--borde);}
+  .sidebar-footer .user{font-size:13px; color:var(--blanco); margin-bottom:2px;}
+  .sidebar-footer .sede{font-size:12px; color:var(--rojo);}
+  .sidebar-footer button{margin-top:10px; font-size:12px; color:var(--carbon); background:none; border:none; cursor:pointer; text-decoration:underline;}
+
+  main{padding:28px 34px; overflow-y:auto; max-height:100vh;}
+  header.topbar{display:flex; justify-content:space-between; align-items:center; margin-bottom:24px;}
+  header.topbar h2{font-size:22px;}
+  .sede-selector{display:flex; align-items:center; gap:8px; font-size:13px; color:var(--carbon);}
+  .sede-selector select{
+    background:var(--negro3); color:var(--blanco); border:1px solid var(--borde);
+    padding:6px 10px; border-radius:6px; font-size:13px;
+  }
+
+  .card{background:var(--negro2); border:1px solid var(--borde); border-radius:12px; padding:20px; margin-bottom:20px;}
+  .card h3{font-size:15px; margin-bottom:14px; color:var(--carbon-claro); text-transform:uppercase; letter-spacing:.5px;}
+  .kpis{display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:14px; margin-bottom:20px;}
+  .kpi{background:var(--negro2); border:1px solid var(--borde); border-radius:12px; padding:18px;}
+  .kpi .label{font-size:12px; color:var(--carbon); text-transform:uppercase; letter-spacing:.5px;}
+  .kpi .valor{font-size:24px; font-weight:700; margin-top:6px;}
+  .kpi.rojo .valor{color:var(--rojo);}
+  .kpi.verde .valor{color:var(--verde);}
+
+  table{width:100%; border-collapse:collapse; font-size:13px;}
+  th{text-align:left; color:var(--carbon); font-weight:600; padding:10px 8px; border-bottom:1px solid var(--borde); text-transform:uppercase; font-size:11px; letter-spacing:.4px;}
+  td{padding:10px 8px; border-bottom:1px solid #191919;}
+  tr:hover td{background:#161616;}
+  .badge{padding:3px 9px; border-radius:20px; font-size:11px; font-weight:600; display:inline-block;}
+  .badge.contado{background:#1d3b26; color:var(--verde);}
+  .badge.credito_directo, .badge.rapid_credit, .badge.plan_ahorro, .badge.motosan{background:#3a2620; color:#e8a35a;}
+  .badge.pendiente{background:#3a2020; color:#e87070;}
+  .badge.pagada_parcial{background:#3a3520; color:#e8d070;}
+  .badge.pagada_completa{background:#1d3b26; color:var(--verde);}
+  .badge.anulada{background:#333; color:#888;}
+
+  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:20px;}
+  .form-row{margin-bottom:14px;}
+  .form-row label{display:block; font-size:12px; color:var(--carbon); margin-bottom:6px;}
+  .form-row input, .form-row select, .form-row textarea{
+    width:100%; padding:10px 12px; background:var(--negro3); border:1px solid var(--borde);
+    border-radius:8px; color:var(--blanco); font-size:14px;
+  }
+  .form-row input:focus, .form-row select:focus, .form-row textarea:focus{outline:none; border-color:var(--rojo);}
+  .inline-2{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+  .inline-3{display:grid; grid-template-columns:2fr 1fr 1fr auto; gap:10px; align-items:end;}
+
+  .linea-item{display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid #191919; font-size:13px;}
+  .linea-item .quitar{color:var(--rojo); cursor:pointer; font-size:12px; margin-left:10px;}
+  .total-venta{font-size:20px; font-weight:700; text-align:right; margin-top:14px; padding-top:14px; border-top:1px solid var(--borde);}
+  .total-venta span{color:var(--rojo);}
+
+  .msg{padding:10px 14px; border-radius:8px; font-size:13px; margin-bottom:14px;}
+  .msg.ok{background:#1d3b26; color:var(--verde);}
+  .msg.err{background:#3a2020; color:#e87070;}
+
+  .tabs-sub{display:flex; gap:8px; margin-bottom:18px;}
+  .tabs-sub button{
+    background:var(--negro3); border:1px solid var(--borde); color:var(--carbon-claro);
+    padding:8px 16px; border-radius:20px; font-size:13px; cursor:pointer;
+  }
+  .tabs-sub button.activo{background:var(--rojo); border-color:var(--rojo); color:#fff;}
+
+  .buscador-resultados{
+    position:relative;
+  }
+  .buscador-lista{
+    position:absolute; top:100%; left:0; right:0; background:var(--negro3); border:1px solid var(--borde);
+    border-radius:8px; max-height:220px; overflow-y:auto; z-index:20; margin-top:4px;
+  }
+  .buscador-lista div{padding:10px 12px; cursor:pointer; font-size:13px; border-bottom:1px solid #262626;}
+  .buscador-lista div:hover{background:#262626;}
+  .buscador-lista .stock{color:var(--carbon); font-size:11px;}
+
+  .modal-bg{
+    display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:50;
+    align-items:center; justify-content:center;
+  }
+  .modal-bg.activo{display:flex;}
+  .modal{background:var(--negro2); border:1px solid var(--borde); border-radius:12px; padding:24px; width:400px; max-width:90vw;}
+  .modal h3{margin-bottom:16px;}
+  .modal .acciones{display:flex; gap:10px; margin-top:18px;}
+
+  .empty{color:var(--carbon); font-size:13px; text-align:center; padding:30px 0;}
+  .btn-menu-movil{display:none; background:none; border:none; color:var(--blanco); font-size:26px; cursor:pointer; padding:4px 8px; line-height:1;}
+  .overlay-movil{display:none; position:fixed; inset:0; background:rgba(0,0,0,.65); z-index:35;}
+  .overlay-movil.activo{display:block;}
+
+  @media (max-width: 860px){
+    #app{grid-template-columns:1fr;}
+    aside{
+      position:fixed; top:0; left:0; bottom:0; width:250px; z-index:45;
+      transform:translateX(-100%); transition:transform .22s ease; box-shadow:6px 0 24px rgba(0,0,0,.5);
+    }
+    aside.abierta{transform:translateX(0);}
+    .btn-menu-movil{display:block;}
+    main{padding:18px 16px 90px;}
+    header.topbar{flex-wrap:wrap; gap:10px; align-items:flex-start;}
+    header.topbar h2{font-size:19px;}
+    .sede-selector{width:100%; justify-content:space-between;}
+    .grid2, .inline-2{grid-template-columns:1fr;}
+    .inline-3{grid-template-columns:1fr !important;}
+    .kpis{grid-template-columns:repeat(auto-fit,minmax(140px,1fr));}
+    table{display:block; overflow-x:auto; white-space:nowrap; -webkit-overflow-scrolling:touch; border-radius:8px;}
+    .card{padding:16px;}
+    .modal{width:92vw; padding:20px;}
+    .tabs-sub{overflow-x:auto; -webkit-overflow-scrolling:touch; flex-wrap:nowrap; padding-bottom:4px;}
+    .tabs-sub button{flex-shrink:0;}
+  }
+</style>
+</head>
+<body>
+<div class="overlay-movil" id="overlay-movil" onclick="cerrarMenuMovil()"></div>
+
+<!-- ================= LOGIN ================= -->
+<div id="login-screen">
+  <div class="login-box">
+    <h1>MOTOS<span>TORO</span></h1>
+    <p class="sub">Panel administrativo</p>
+    <input type="email" id="login-email" placeholder="Correo electrónico" autocomplete="username">
+    <input type="password" id="login-pass" placeholder="Contraseña" autocomplete="current-password">
+    <button class="btn" id="btn-login" onclick="hacerLogin()">Entrar</button>
+    <div id="login-error"></div>
+  </div>
+</div>
+
+<!-- ================= APP ================= -->
+<div id="app">
+  <aside>
+    <div class="logo-mini">
+      <div>MOTOS<span>TORO</span></div>
+      <small>Panel administrativo</small>
+    </div>
+    <nav id="nav-menu">
+      <button data-tab="ventas" class="activo">🧾 Ventas</button>
+      <button data-tab="motosan">🎡 Motosán</button>
+      <button data-tab="ahorro">🏦 Plan Ahorro</button>
+      <button data-tab="compras">🛒 Compras</button>
+      <button data-tab="caja">💰 Caja</button>
+      <button data-tab="finanzas">📊 Finanzas</button>
+      <button data-tab="cobrar">📋 Cuentas por cobrar</button>
+      <button data-tab="pagar">📤 Cuentas por pagar</button>
+      <button data-tab="inventario">📦 Inventario</button>
+      <button data-tab="productos">🏷️ Productos</button>
+      <button data-tab="clientes">👤 Clientes</button>
+      <button data-tab="contenido">📝 Contenido de la tienda</button>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user" id="footer-user"></div>
+      <div class="sede" id="footer-sede"></div>
+      <button onclick="cerrarSesion()">Cerrar sesión</button>
+    </div>
+  </aside>
+
+  <main>
+    <header class="topbar">
+      <div style="display:flex; align-items:center; gap:6px;">
+        <button class="btn-menu-movil" onclick="toggleMenuMovil()" aria-label="Abrir menú">☰</button>
+        <h2 id="titulo-tab">Ventas</h2>
+      </div>
+      <div class="sede-selector" id="sede-selector-wrap" style="display:none;">
+        Viendo sede:
+        <select id="sede-selector" onchange="cambiarSedeSeleccionada(this.value)"></select>
+      </div>
+    </header>
+
+    <div id="contenido-tab"></div>
+  </main>
+</div>
+
+<!-- Modal genérico (abonos, gastos, etc.) -->
+<div class="modal-bg" id="modal-bg">
+  <div class="modal" id="modal-contenido"></div>
+</div>
+
+<script>
+/* =========================================================
+   CONFIGURACIÓN SUPABASE
+========================================================= */
+const SUPABASE_URL = "https://yalmrlfchvpayeqrqzcu.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlhbG1ybGZjaHZwYXllcXJxemN1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUwNzY4NDEsImV4cCI6MjEwMDY1Mjg0MX0.8FugQynmYVO1T1cmp3Tf3_nk7XIo4fwrsIqi9aexx4w";
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+/* =========================================================
+   ESTADO GLOBAL
+========================================================= */
+let ESTADO = {
+  usuario: null,
+  perfil: null,
+  sedes: [],
+  sedeSeleccionada: null, // sede sobre la que se está operando/viendo
+  tabActual: 'ventas',
+  productos: [],
+  clientes: [],
+  carritoVenta: [] // items de la venta en curso
+};
+
+const MODALIDADES = {
+  contado: "Contado",
+  credito_directo: "Crédito directo",
+  rapid_credit: "Rapid Credit",
+  plan_ahorro: "Plan Ahorro",
+  motosan: "Motosán"
+};
+
+const TIPOS_GASTO = {
+  pago_empleado: "Pago a empleado",
+  alquiler: "Alquiler",
+  servicio: "Servicio",
+  impuestos: "Impuestos",
+  pago_contador: "Pago a contador",
+  donacion: "Donación",
+  otro: "Otro"
+};
+
+/* =========================================================
+   LOGIN / SESIÓN
+========================================================= */
+async function hacerLogin(){
+  const email = document.getElementById('login-email').value.trim();
+  const pass = document.getElementById('login-pass').value;
+  const errDiv = document.getElementById('login-error');
+  errDiv.textContent = '';
+  const btn = document.getElementById('btn-login');
+  if(!email || !pass){ errDiv.textContent = 'Ingresa correo y contraseña.'; return; }
+  btn.disabled = true; btn.textContent = 'Entrando...';
+
+  const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
+  btn.disabled = false; btn.textContent = 'Entrar';
+
+  if(error){
+    errDiv.textContent = 'Correo o contraseña incorrectos.';
+    return;
+  }
+  await cargarSesion();
+}
+
+async function cerrarSesion(){
+  await sb.auth.signOut();
+  location.reload();
+}
+
+async function cargarSesion(){
+  const { data: { user } } = await sb.auth.getUser();
+  if(!user){ mostrarLogin(); return; }
+  ESTADO.usuario = user;
+
+  const { data: perfil, error } = await sb.from('perfiles').select('*').eq('id', user.id).single();
+  if(error || !perfil){
+    document.getElementById('login-error').textContent = 'Tu usuario no tiene un perfil asignado. Contacta al administrador.';
+    mostrarLogin();
+    return;
+  }
+  if(!perfil.activo){
+    document.getElementById('login-error').textContent = 'Tu cuenta está desactivada.';
+    mostrarLogin();
+    return;
+  }
+  ESTADO.perfil = perfil;
+
+  const { data: sedes } = await sb.from('sedes').select('*').eq('activa', true).order('nombre');
+  ESTADO.sedes = sedes || [];
+
+  if(perfil.rol === 'admin_general'){
+    ESTADO.sedeSeleccionada = ESTADO.sedes[0]?.id || null;
+  } else {
+    ESTADO.sedeSeleccionada = perfil.sede_id;
+  }
+
+  mostrarApp();
+}
+
+function mostrarLogin(){
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+}
+
+function mostrarApp(){
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'grid';
+
+  document.getElementById('footer-user').textContent = ESTADO.perfil.nombre_completo;
+  const sedeActual = ESTADO.sedes.find(s => s.id === ESTADO.sedeSeleccionada);
+  document.getElementById('footer-sede').innerHTML = ESTADO.perfil.rol === 'admin_general'
+    ? 'Administrador general'
+    : (sedeActual ? `${sedeActual.nombre}${sedeActual.razon_social ? `<br><span style="color:var(--carbon); font-size:11px;">${sedeActual.razon_social}</span>` : ''}` : '');
+
+  const wrap = document.getElementById('sede-selector-wrap');
+  if(ESTADO.perfil.rol === 'admin_general' && ESTADO.sedes.length){
+    wrap.style.display = 'flex';
+    const sel = document.getElementById('sede-selector');
+    sel.innerHTML = ESTADO.sedes.map(s => `<option value="${s.id}">${s.nombre}</option>`).join('');
+    sel.value = ESTADO.sedeSeleccionada;
+  } else {
+    wrap.style.display = 'none';
+  }
+
+  document.querySelectorAll('#nav-menu button').forEach(btn=>{
+    btn.onclick = () => cambiarTab(btn.dataset.tab);
+  });
+
+  cambiarTab('ventas');
+}
+
+function cambiarSedeSeleccionada(sedeId){
+  ESTADO.sedeSeleccionada = sedeId;
+  cambiarTab(ESTADO.tabActual);
+}
+
+function toggleMenuMovil(){
+  document.querySelector('aside').classList.toggle('abierta');
+  document.getElementById('overlay-movil').classList.toggle('activo');
+}
+function cerrarMenuMovil(){
+  document.querySelector('aside').classList.remove('abierta');
+  document.getElementById('overlay-movil').classList.remove('activo');
+}
+
+/* =========================================================
+   NAVEGACIÓN DE TABS
+========================================================= */
+const TITULOS = {
+  ventas: 'Ventas', motosan: 'Motosán', ahorro: 'Plan Ahorro', compras: 'Compras', caja: 'Caja', finanzas: 'Finanzas', cobrar: 'Cuentas por cobrar', pagar: 'Cuentas por pagar',
+  inventario: 'Inventario', productos: 'Productos', clientes: 'Clientes', contenido: 'Contenido de la tienda'
+};
+
+function cambiarTab(tab){
+  ESTADO.tabActual = tab;
+  document.querySelectorAll('#nav-menu button').forEach(b=>{
+    b.classList.toggle('activo', b.dataset.tab === tab);
+  });
+  document.getElementById('titulo-tab').textContent = TITULOS[tab];
+  cerrarMenuMovil();
+
+  const render = {
+    ventas: renderVentas,
+    motosan: renderMotosan,
+    ahorro: renderPlanAhorro,
+    compras: renderCompras,
+    caja: renderCaja,
+    finanzas: renderFinanzas,
+    cobrar: renderCobrar,
+    pagar: renderPagar,
+    inventario: renderInventario,
+    productos: renderProductos,
+    clientes: renderClientes,
+    contenido: renderContenidoTienda
+  }[tab];
+  render();
+}
+
+function sedeNombre(id){
+  return ESTADO.sedes.find(s=>s.id===id)?.nombre || '—';
+}
+
+function razonSocial(id){
+  return ESTADO.sedes.find(s=>s.id===id)?.razon_social || '';
+}
+
+function money(n){
+  return '$' + Number(n||0).toLocaleString('es-VE', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+function fecha(f){
+  return new Date(f).toLocaleString('es-VE', {day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit'});
+}
+
+/* Similitud de texto (coeficiente de Dice sobre bigramas) para emparejar nombres de producto */
+function normalizarTexto(t){
+  return (t||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9 ]/g,'').trim();
+}
+function bigramas(t){
+  const s = normalizarTexto(t);
+  const out = [];
+  for(let i=0; i<s.length-1; i++) out.push(s.substring(i,i+2));
+  return out;
+}
+function similitud(a, b){
+  const ba = bigramas(a), bb = bigramas(b);
+  if(!ba.length || !bb.length) return 0;
+  let interseccion = 0;
+  const copia = [...bb];
+  for(const bg of ba){
+    const idx = copia.indexOf(bg);
+    if(idx !== -1){ interseccion++; copia.splice(idx,1); }
+  }
+  return (2 * interseccion) / (ba.length + bb.length);
+}
+function mejorMatchProducto(nombre, codigo){
+  // 1) Match exacto por código/SKU si viene en la factura y coincide con algún producto
+  if(codigo){
+    const codigoNormalizado = normalizarTexto(codigo);
+    const porCodigo = ESTADO.productos.find(p => p.sku && normalizarTexto(p.sku) === codigoNormalizado);
+    if(porCodigo) return { producto: porCodigo, score: 1, porCodigo: true };
+  }
+  // 2) Si no hay match por código, similitud de nombre
+  let mejor = null, mejorScore = 0;
+  for(const p of ESTADO.productos){
+    const score = similitud(nombre, p.nombre);
+    if(score > mejorScore){ mejorScore = score; mejor = p; }
+  }
+  return mejorScore >= 0.5 ? { producto: mejor, score: mejorScore, porCodigo: false } : null;
+}
+
+/* =========================================================
+   VENTAS
+========================================================= */
+async function renderVentas(){
+  const cont = document.getElementById('contenido-tab');
+  cont.innerHTML = `<div class="empty">Cargando...</div>`;
+
+  await cargarProductosYClientes();
+
+  const { data: ventas } = await sb.from('ventas')
+    .select('*, clientes(nombre_completo)')
+    .eq('sede_id', ESTADO.sedeSeleccionada)
+    .order('created_at', {ascending:false})
+    .limit(50);
+
+  ESTADO.carritoVenta = [];
+
+  cont.innerHTML = `
+    <div class="grid2">
+      <div class="card">
+        <h3>Nueva venta — ${sedeNombre(ESTADO.sedeSeleccionada)}</h3>
+        <div id="venta-msg"></div>
+
+        <div class="form-row buscador-resultados">
+          <label>Buscar producto (nombre, código) o deja vacío para ver todo el inventario</label>
+          <input type="text" id="buscar-producto" placeholder="Escribe para buscar..." oninput="buscarProductoInput(this.value)" onfocus="buscarProductoInput(this.value)" autocomplete="off">
+          <div class="buscador-lista" id="lista-productos" style="display:none;"></div>
+        </div>
+
+        <div id="lineas-venta"></div>
+        <div class="total-venta">Total: <span id="total-venta">$0.00</span></div>
+
+        <div class="form-row" style="margin-top:18px;">
+          <label>Forma de pago</label>
+          <select id="modalidad-venta" onchange="onModalidadChange()">
+            ${Object.entries(MODALIDADES).filter(([k])=>k!=='motosan'&&k!=='plan_ahorro').map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}
+          </select>
+          <div class="stock" style="margin-top:6px;">¿Buscas Motosán o Plan Ahorro? Tienen su propia pestaña con seguimiento de pagos.</div>
+        </div>
+
+        <div class="form-row buscador-resultados">
+          <label id="label-cliente-venta">Cliente (opcional en ventas de contado)</label>
+          <input type="text" id="buscar-cliente" placeholder="Buscar o escribir nombre nuevo..." oninput="buscarClienteInput(this.value)" autocomplete="off">
+          <div class="buscador-lista" id="lista-clientes" style="display:none;"></div>
+        </div>
+        <input type="hidden" id="cliente-id-seleccionado">
+
+        <div id="abono-inicial-wrap" style="display:none;">
+          <div class="form-row">
+            <label>Abono inicial (opcional, se descuenta de la deuda y entra a caja)</label>
+            <input type="number" id="abono-inicial" min="0" step="0.01" placeholder="0.00">
+          </div>
+        </div>
+
+        <button class="btn" style="margin-top:10px;" onclick="registrarVenta()">Registrar venta</button>
+      </div>
+
+      <div class="card">
+        <h3>Últimas ventas de esta sede</h3>
+        <div class="tabs-sub" id="filtro-modalidad-ventas">
+          <button class="activo" onclick="filtrarVentasPorModalidad('todas', this)">Todas</button>
+          ${Object.entries(MODALIDADES).filter(([k])=>k!=='motosan'&&k!=='plan_ahorro').map(([k,v])=>`<button onclick="filtrarVentasPorModalidad('${k}', this)">${v}</button>`).join('')}
+        </div>
+        <table>
+          <thead><tr><th>Fecha</th><th>Cliente</th><th>Modalidad</th><th>Total</th><th>Estado</th></tr></thead>
+          <tbody id="tbody-ventas">
+            ${(ventas||[]).map(v=>`
+              <tr data-modalidad="${v.modalidad}">
+                <td>${fecha(v.created_at)}</td>
+                <td>${v.clientes?.nombre_completo || '—'}</td>
+                <td><span class="badge ${v.modalidad}">${MODALIDADES[v.modalidad]}</span></td>
+                <td>${money(v.total)}</td>
+                <td><span class="badge ${v.estado}">${v.estado.replace('_',' ')}</span></td>
+              </tr>
+            `).join('') || `<tr><td colspan="5" class="empty">Sin ventas todavía</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+  renderLineasVenta();
+}
+
+async function cargarProductosYClientes(){
+  const { data: productos } = await sb.from('productos').select('*').eq('activo', true).order('nombre');
+  ESTADO.productos = productos || [];
+  const { data: clientes } = await sb.from('clientes').select('*').order('nombre_completo');
+  ESTADO.clientes = clientes || [];
+
+  const { data: invRows } = await sb.from('inventario').select('*').eq('sede_id', ESTADO.sedeSeleccionada);
+  ESTADO.inventarioSede = {};
+  (invRows||[]).forEach(r => ESTADO.inventarioSede[r.producto_id] = r.cantidad);
+}
+
+function buscarProductoInput(txt){
+  const lista = document.getElementById('lista-productos');
+  const t = txt.toLowerCase().trim();
+  let results;
+  if(!t){
+    // Sin texto: mostrar todo el inventario con stock disponible en esta sede
+    results = ESTADO.productos
+      .filter(p => (ESTADO.inventarioSede[p.id] ?? 0) > 0)
+      .sort((a,b) => a.nombre.localeCompare(b.nombre))
+      .slice(0, 30);
+  } else {
+    results = ESTADO.productos.filter(p =>
+      p.nombre.toLowerCase().includes(t) || (p.sku||'').toLowerCase().includes(t)
+    ).slice(0,15);
+  }
+  if(!results.length){ lista.innerHTML = `<div>Sin productos con stock en esta sede. Ve a Inventario para cargar stock.</div>`; lista.style.display='block'; return; }
+  lista.innerHTML = results.map(p => `
+    <div onclick="agregarProductoAVenta('${p.id}')">
+      ${p.nombre} — ${money(p.precio)}
+      <div class="stock">Stock en esta sede: ${ESTADO.inventarioSede[p.id] ?? 0}</div>
+    </div>
+  `).join('');
+  lista.style.display = 'block';
+}
+
+function agregarProductoAVenta(productoId){
+  const producto = ESTADO.productos.find(p=>p.id===productoId);
+  if(!producto) return;
+  const existente = ESTADO.carritoVenta.find(l=>l.producto_id===productoId);
+  if(existente){ existente.cantidad += 1; }
+  else {
+    ESTADO.carritoVenta.push({
+      producto_id: producto.id, nombre: producto.nombre,
+      precio_unitario: Number(producto.precio), cantidad: 1
+    });
+  }
+  document.getElementById('buscar-producto').value = '';
+  document.getElementById('lista-productos').style.display = 'none';
+  renderLineasVenta();
+}
+
+function filtrarVentasPorModalidad(modalidad, btn){
+  document.querySelectorAll('#filtro-modalidad-ventas button').forEach(b=>b.classList.remove('activo'));
+  btn.classList.add('activo');
+  document.querySelectorAll('#tbody-ventas tr[data-modalidad]').forEach(tr=>{
+    tr.style.display = (modalidad === 'todas' || tr.dataset.modalidad === modalidad) ? '' : 'none';
+  });
+}
+
+function renderLineasVenta(){
+  const div = document.getElementById('lineas-venta');
+  if(!ESTADO.carritoVenta.length){
+    div.innerHTML = `<div class="empty">Agrega productos a la venta</div>`;
+  } else {
+    div.innerHTML = ESTADO.carritoVenta.map((l,i)=>`
+      <div class="linea-item">
+        <div>${l.nombre}</div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:11px; color:var(--carbon);">Cant.</span>
+          <input type="number" min="1" value="${l.cantidad}" style="width:50px; padding:5px; background:var(--negro3); border:1px solid var(--borde); border-radius:6px; color:#fff;"
+            onchange="cambiarCantidad(${i}, this.value)">
+          <span style="font-size:11px; color:var(--carbon);">Precio</span>
+          <input type="number" min="0" step="0.01" value="${l.precio_unitario}" style="width:75px; padding:5px; background:var(--negro3); border:1px solid var(--borde); border-radius:6px; color:#fff;"
+            onchange="cambiarPrecioLinea(${i}, this.value)">
+          <span style="min-width:70px; text-align:right;">${money(l.precio_unitario * l.cantidad)}</span>
+          <span class="quitar" onclick="quitarLinea(${i})">✕</span>
+        </div>
+      </div>
+    `).join('');
+  }
+  const total = ESTADO.carritoVenta.reduce((s,l)=>s + l.precio_unitario*l.cantidad, 0);
+  document.getElementById('total-venta').textContent = money(total);
+}
+
+function cambiarCantidad(i, val){
+  ESTADO.carritoVenta[i].cantidad = Math.max(1, parseFloat(val)||1);
+  renderLineasVenta();
+}
+function cambiarPrecioLinea(i, val){
+  ESTADO.carritoVenta[i].precio_unitario = Math.max(0, parseFloat(val)||0);
+  renderLineasVenta();
+}
+function quitarLinea(i){
+  ESTADO.carritoVenta.splice(i,1);
+  renderLineasVenta();
+}
+
+function onModalidadChange(){
+  const modalidad = document.getElementById('modalidad-venta').value;
+  const esCredito = modalidad !== 'contado';
+  document.getElementById('abono-inicial-wrap').style.display = esCredito ? 'block' : 'none';
+  document.getElementById('label-cliente-venta').textContent = esCredito ? 'Cliente (obligatorio para esta modalidad)' : 'Cliente (opcional en ventas de contado)';
+}
+
+function buscarClienteInput(txt){
+  document.getElementById('cliente-id-seleccionado').value = '';
+  const lista = document.getElementById('lista-clientes');
+  if(!txt.trim()){ lista.style.display='none'; return; }
+  const t = txt.toLowerCase();
+  const results = ESTADO.clientes.filter(c => c.nombre_completo.toLowerCase().includes(t)).slice(0,8);
+  let html = results.map(c => `<div onclick="seleccionarCliente('${c.id}','${c.nombre_completo.replace(/'/g,"\\'")}')">${c.nombre_completo}</div>`).join('');
+  html += `<div style="color:var(--rojo);" onclick="crearClienteRapido('${txt.replace(/'/g,"\\'")}')">+ Crear cliente nuevo: "${txt}"</div>`;
+  lista.innerHTML = html;
+  lista.style.display = 'block';
+}
+
+function seleccionarCliente(id, nombre){
+  document.getElementById('cliente-id-seleccionado').value = id;
+  document.getElementById('buscar-cliente').value = nombre;
+  document.getElementById('lista-clientes').style.display = 'none';
+}
+
+async function crearClienteRapido(nombre){
+  if(!nombre.trim()) return;
+  const { data, error } = await sb.from('clientes').insert({ nombre_completo: nombre.trim() }).select().single();
+  if(error){ alert('Error creando cliente: ' + error.message); return; }
+  ESTADO.clientes.push(data);
+  seleccionarCliente(data.id, data.nombre_completo);
+}
+
+async function registrarVenta(){
+  const msg = document.getElementById('venta-msg');
+  msg.innerHTML = '';
+  if(!ESTADO.carritoVenta.length){ msg.innerHTML = `<div class="msg err">Agrega al menos un producto.</div>`; return; }
+
+  const modalidad = document.getElementById('modalidad-venta').value;
+  const total = ESTADO.carritoVenta.reduce((s,l)=>s + l.precio_unitario*l.cantidad, 0);
+  const esCredito = modalidad !== 'contado';
+  let clienteId = null;
+  let abonoInicial = 0;
+
+  if(esCredito){
+    clienteId = document.getElementById('cliente-id-seleccionado').value;
+    if(!clienteId){ msg.innerHTML = `<div class="msg err">Selecciona o crea un cliente para esta modalidad.</div>`; return; }
+    abonoInicial = parseFloat(document.getElementById('abono-inicial').value) || 0;
+    if(abonoInicial > total){ msg.innerHTML = `<div class="msg err">El abono inicial no puede ser mayor al total.</div>`; return; }
+  }
+
+  // Validar stock
+  for(const l of ESTADO.carritoVenta){
+    const stock = ESTADO.inventarioSede[l.producto_id] ?? 0;
+    if(l.cantidad > stock){
+      msg.innerHTML = `<div class="msg err">Stock insuficiente de "${l.nombre}" en esta sede (disponible: ${stock}).</div>`;
+      return;
+    }
+  }
+
+  const estadoVenta = !esCredito ? 'pagada_completa' : (abonoInicial >= total ? 'pagada_completa' : (abonoInicial > 0 ? 'pagada_parcial' : 'pendiente'));
+
+  const { data: venta, error: errVenta } = await sb.from('ventas').insert({
+    sede_id: ESTADO.sedeSeleccionada,
+    cliente_id: clienteId,
+    modalidad,
+    estado: estadoVenta,
+    total,
+    monto_pagado: esCredito ? abonoInicial : total,
+    created_by: ESTADO.perfil.id
+  }).select().single();
+
+  if(errVenta){ msg.innerHTML = `<div class="msg err">Error: ${errVenta.message}</div>`; return; }
+
+  // Items
+  const items = ESTADO.carritoVenta.map(l => ({
+    venta_id: venta.id, producto_id: l.producto_id, cantidad: l.cantidad,
+    precio_unitario: l.precio_unitario, subtotal: l.precio_unitario*l.cantidad
+  }));
+  await sb.from('venta_items').insert(items);
+
+  // Descontar inventario + movimientos
+  for(const l of ESTADO.carritoVenta){
+    const nuevaCantidad = (ESTADO.inventarioSede[l.producto_id]||0) - l.cantidad;
+    await sb.from('inventario').update({ cantidad: nuevaCantidad, updated_at: new Date().toISOString() })
+      .eq('sede_id', ESTADO.sedeSeleccionada).eq('producto_id', l.producto_id);
+    await sb.from('movimientos_inventario').insert({
+      sede_id: ESTADO.sedeSeleccionada, producto_id: l.producto_id, tipo: 'salida_venta',
+      cantidad: l.cantidad, referencia_id: venta.id, created_by: ESTADO.perfil.id
+    });
+  }
+
+  // Caja
+  const { data: caja } = await sb.from('cajas').select('*').eq('sede_id', ESTADO.sedeSeleccionada).single();
+  const montoParaCaja = esCredito ? abonoInicial : total;
+  if(caja && montoParaCaja > 0){
+    await sb.from('movimientos_caja').insert({
+      caja_id: caja.id, sede_id: ESTADO.sedeSeleccionada,
+      tipo: esCredito ? 'ingreso_abono' : 'ingreso_venta', monto: montoParaCaja,
+      descripcion: esCredito ? 'Abono inicial de venta a crédito' : 'Venta de contado',
+      referencia_id: venta.id, created_by: ESTADO.perfil.id
+    });
+    await sb.from('cajas').update({ saldo_actual: Number(caja.saldo_actual) + montoParaCaja }).eq('id', caja.id);
+  }
+
+  // Cuenta por cobrar si aplica
+  if(esCredito && estadoVenta !== 'pagada_completa'){
+    const { data: cxc } = await sb.from('cuentas_por_cobrar').insert({
+      venta_id: venta.id, sede_id: ESTADO.sedeSeleccionada, cliente_id: clienteId,
+      monto_total: total, saldo_pendiente: total - abonoInicial, estado: estadoVenta
+    }).select().single();
+
+    if(abonoInicial > 0 && cxc){
+      await sb.from('abonos').insert({
+        cuenta_por_cobrar_id: cxc.id, monto: abonoInicial, nota: 'Abono inicial al momento de la venta',
+        created_by: ESTADO.perfil.id
+      });
+    }
+  }
+
+  msg.innerHTML = `<div class="msg ok">Venta registrada correctamente.</div>`;
+  renderVentas();
+}
+
+/* =========================================================
+   MOTOSÁN
+========================================================= */
+let MOTOSAN_GRUPO_ACTIVO = null;
+
+async function renderMotosan(){
+  const cont = document.getElementById('contenido-tab');
+  cont.innerHTML = `<div class="empty">Cargando...</div>`;
+  await cargarProductosYClientes();
+
+  const { data: grupos } = await sb.from('motosan_grupos')
+    .select('*')
+    .eq('sede_id', ESTADO.sedeSeleccionada)
+    .order('created_at', {ascending:false});
+
+  cont.innerHTML = `
+    <div class="grid2">
+      <div class="card">
+        <h3>Nuevo grupo Motosán</h3>
+        <div id="motosan-grupo-msg"></div>
+        <div class="form-row"><label>Nombre del grupo</label><input type="text" id="mg-nombre" placeholder="Ej: Motosán Julio 2026"></div>
+        <div class="form-row"><label>Cantidad total de semanas (igual para todos los participantes)</label><input type="number" id="mg-semanas" min="1" step="1" placeholder="Ej: 20"></div>
+        <div class="stock">Después de crear el grupo, precargas ahí mismo qué motos están disponibles y cuánto se paga por semana según la moto elegida.</div>
+        <button class="btn" style="margin-top:10px;" onclick="crearGrupoMotosan()">Crear grupo</button>
+      </div>
+
+      <div class="card">
+        <h3>Grupos activos — ${sedeNombre(ESTADO.sedeSeleccionada)}</h3>
+        <table>
+          <thead><tr><th>Grupo</th><th>Semanas totales</th><th></th></tr></thead>
+          <tbody>
+            ${(grupos||[]).map(g=>`
+              <tr>
+                <td>${g.nombre}</td>
+                <td>${g.semanas_totales}</td>
+                <td><button class="btn chico" onclick="abrirGrupoMotosan('${g.id}')">Gestionar</button></td>
+              </tr>
+            `).join('') || `<tr><td colspan="3" class="empty">No hay grupos Motosán creados aún</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="motosan-detalle"></div>
+  `;
+}
+
+async function crearGrupoMotosan(){
+  const msg = document.getElementById('motosan-grupo-msg');
+  const nombre = document.getElementById('mg-nombre').value.trim();
+  const semanas_totales = parseInt(document.getElementById('mg-semanas').value);
+
+  if(!nombre || !semanas_totales){
+    msg.innerHTML = `<div class="msg err">Completa nombre y cantidad de semanas.</div>`; return;
+  }
+
+  const { data, error } = await sb.from('motosan_grupos').insert({
+    sede_id: ESTADO.sedeSeleccionada, nombre, semanas_totales, created_by: ESTADO.perfil.id
+  }).select().single();
+  if(error){ msg.innerHTML = `<div class="msg err">Error: ${error.message}</div>`; return; }
+  msg.innerHTML = `<div class="msg ok">Grupo creado. Ahora agrega las motos disponibles abajo.</div>`;
+  await renderMotosan();
+  abrirGrupoMotosan(data.id);
+}
+
+async function abrirGrupoMotosan(grupoId){
+  MOTOSAN_GRUPO_ACTIVO = grupoId;
+  const detalle = document.getElementById('motosan-detalle');
+  detalle.innerHTML = `<div class="empty">Cargando grupo...</div>`;
+
+  const { data: grupo } = await sb.from('motosan_grupos').select('*').eq('id', grupoId).single();
+  const { data: motosGrupo } = await sb.from('motosan_grupo_motos').select('*, productos(nombre, precio)').eq('grupo_id', grupoId).order('created_at');
+  const { data: participantes } = await sb.from('motosan_participantes')
+    .select('*, clientes(nombre_completo, telefono), motosan_grupo_motos(monto_moto, cuota_semanal, productos(nombre))')
+    .eq('grupo_id', grupoId).order('created_at');
+
+  const participantesConDatos = [];
+  for(const p of (participantes||[])){
+    const cuota = Number(p.motosan_grupo_motos?.cuota_semanal || 0);
+    const { data: pagos } = await sb.from('motosan_pagos').select('*').eq('participante_id', p.id);
+    const totalPagado = (pagos||[]).reduce((s,pg)=>s+Number(pg.monto),0);
+    const semanasTranscurridas = Math.max(1, Math.floor((Date.now() - new Date(p.created_at).getTime()) / (7*24*60*60*1000)) + 1);
+    const semanasEsperadas = Math.min(semanasTranscurridas, grupo.semanas_totales);
+    const cuotasEsperadas = semanasEsperadas * cuota;
+    const alDia = totalPagado >= cuotasEsperadas - cuota;
+    participantesConDatos.push({ ...p, cuota, totalPagado, alDia, numPagos: (pagos||[]).length });
+  }
+
+  detalle.innerHTML = `
+    <div class="card">
+      <h3>${grupo.nombre} — ${grupo.semanas_totales} semanas totales</h3>
+
+      <h3 style="margin-top:6px;">Motos disponibles en este grupo</h3>
+      <div id="motosan-moto-msg"></div>
+      <div class="inline-3">
+        <div class="form-row" style="margin-bottom:0;">
+          <label>Moto</label>
+          <select id="mgm-producto" onchange="autocompletarMontoMotoGrupo(${grupo.semanas_totales})">
+            ${ESTADO.productos.map(p=>`<option value="${p.id}" data-precio="${p.precio}">${p.nombre} — ${money(p.precio)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-row" style="margin-bottom:0;">
+          <label>Monto total</label>
+          <input type="number" id="mgm-monto" min="0" step="0.01" oninput="recalcularCuotaMotoGrupo(${grupo.semanas_totales})">
+        </div>
+        <div class="form-row" style="margin-bottom:0;">
+          <label>Cuota semanal</label>
+          <input type="number" id="mgm-cuota" min="0" step="0.01">
+        </div>
+        <button class="btn chico" onclick="agregarMotoAlGrupo()">+ Agregar</button>
+      </div>
+
+      <table style="margin-top:10px;">
+        <thead><tr><th>Moto</th><th>Monto total</th><th>Cuota semanal</th></tr></thead>
+        <tbody>
+          ${(motosGrupo||[]).map(m=>`<tr><td>${m.productos?.nombre}</td><td>${money(m.monto_moto)}</td><td>${money(m.cuota_semanal)}/sem</td></tr>`).join('') || `<tr><td colspan="3" class="empty">Agrega al menos una moto para poder inscribir participantes</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>Participantes</h3>
+      <div id="motosan-participante-msg"></div>
+
+      ${(motosGrupo||[]).length ? `
+        <div class="form-row buscador-resultados">
+          <label>Agregar participante</label>
+          <input type="text" id="ms-buscar-cliente" placeholder="Buscar o escribir nombre nuevo..." oninput="buscarClienteInputMotosan(this.value)" autocomplete="off">
+          <div class="buscador-lista" id="ms-lista-clientes" style="display:none;"></div>
+        </div>
+      ` : `<div class="stock">Primero agrega al menos una moto disponible arriba.</div>`}
+
+      <table>
+        <thead><tr><th>Cliente</th><th>Moto elegida</th><th>Monto</th><th>Cuota/sem</th><th>Pagos</th><th>Total pagado</th><th>Al día</th><th>Estado</th><th></th></tr></thead>
+        <tbody>
+          ${participantesConDatos.map(p=>`
+            <tr>
+              <td>${p.clientes?.nombre_completo}</td>
+              <td>${p.motosan_grupo_motos?.productos?.nombre || '—'}</td>
+              <td>${money(p.motosan_grupo_motos?.monto_moto)}</td>
+              <td>${money(p.cuota)}</td>
+              <td>${p.numPagos}</td>
+              <td>${money(p.totalPagado)}</td>
+              <td>${p.gano ? '—' : (p.alDia ? '<span class="badge pagada_completa">Al día</span>' : '<span class="badge pendiente">Atrasado</span>')}</td>
+              <td>${p.gano ? '<span class="badge pagada_completa">🏆 Ganó</span>' : '<span class="badge credito_directo">En juego</span>'}</td>
+              <td>${p.gano ? '—' : `<button class="btn chico secundario" onclick="registrarPagoMotosan('${p.id}', ${p.cuota})">+ Pago semanal</button>`}</td>
+            </tr>
+          `).join('') || `<tr><td colspan="9" class="empty">Sin participantes aún</td></tr>`}
+        </tbody>
+      </table>
+
+      <button class="btn" style="margin-top:16px;" onclick="hacerSorteoMotosan('${grupoId}')">🎡 Hacer sorteo de este mes</button>
+    </div>
+  `;
+}
+
+function autocompletarMontoMotoGrupo(semanas){
+  const sel = document.getElementById('mgm-producto');
+  const precio = sel.options[sel.selectedIndex]?.dataset.precio || 0;
+  document.getElementById('mgm-monto').value = precio;
+  recalcularCuotaMotoGrupo(semanas);
+}
+function recalcularCuotaMotoGrupo(semanas){
+  const monto = parseFloat(document.getElementById('mgm-monto').value) || 0;
+  document.getElementById('mgm-cuota').value = semanas > 0 ? (monto / semanas).toFixed(2) : '';
+}
+
+async function agregarMotoAlGrupo(){
+  const msg = document.getElementById('motosan-moto-msg');
+  const producto_id = document.getElementById('mgm-producto').value;
+  const monto_moto = parseFloat(document.getElementById('mgm-monto').value);
+  const cuota_semanal = parseFloat(document.getElementById('mgm-cuota').value);
+
+  if(!producto_id || !monto_moto || !cuota_semanal){
+    msg.innerHTML = `<div class="msg err">Completa moto, monto y cuota semanal.</div>`; return;
+  }
+
+  const { error } = await sb.from('motosan_grupo_motos').insert({ grupo_id: MOTOSAN_GRUPO_ACTIVO, producto_id, monto_moto, cuota_semanal });
+  if(error){ msg.innerHTML = `<div class="msg err">Error: ${error.message}</div>`; return; }
+  abrirGrupoMotosan(MOTOSAN_GRUPO_ACTIVO);
+}
+
+function buscarClienteInputMotosan(txt){
+  const lista = document.getElementById('ms-lista-clientes');
+  if(!txt.trim()){ lista.style.display='none'; return; }
+  const t = txt.toLowerCase();
+  const results = ESTADO.clientes.filter(c => c.nombre_completo.toLowerCase().includes(t)).slice(0,8);
+  let html = results.map(c => `<div onclick="abrirModalNuevoParticipante('${c.id}','${c.nombre_completo.replace(/'/g,"\\'")}')">${c.nombre_completo}</div>`).join('');
+  html += `<div style="color:var(--rojo);" onclick="crearClienteYAbrirModalMotosan('${txt.replace(/'/g,"\\'")}')">+ Crear cliente nuevo: "${txt}"</div>`;
+  lista.innerHTML = html;
+  lista.style.display = 'block';
+}
+
+async function crearClienteYAbrirModalMotosan(nombre){
+  if(!nombre.trim()) return;
+  const { data, error } = await sb.from('clientes').insert({ nombre_completo: nombre.trim() }).select().single();
+  if(error){ alert('Error creando cliente: ' + error.message); return; }
+  ESTADO.clientes.push(data);
+  abrirModalNuevoParticipante(data.id, data.nombre_completo);
+}
+
+async function abrirModalNuevoParticipante(clienteId, nombreCliente){
+  document.getElementById('ms-buscar-cliente').value = '';
+  document.getElementById('ms-lista-clientes').style.display = 'none';
+
+  const { data: motosGrupo } = await sb.from('motosan_grupo_motos').select('*, productos(nombre)').eq('grupo_id', MOTOSAN_GRUPO_ACTIVO);
+
+  document.getElementById('modal-contenido').innerHTML = `
+    <h3>Inscribir a ${nombreCliente}</h3>
+    <div id="modal-participante-msg"></div>
+    <div class="form-row">
+      <label>Moto que eligió</label>
+      <select id="mp-grupo-moto">
+        ${(motosGrupo||[]).map(m=>`<option value="${m.id}">${m.productos?.nombre} — ${money(m.monto_moto)} (${money(m.cuota_semanal)}/sem)</option>`).join('')}
+      </select>
+    </div>
+    <div class="acciones">
+      <button class="btn secundario" onclick="cerrarModal()">Cancelar</button>
+      <button class="btn" onclick="confirmarNuevoParticipante('${clienteId}')">Inscribir</button>
+    </div>
+  `;
+  document.getElementById('modal-bg').classList.add('activo');
+}
+
+async function confirmarNuevoParticipante(clienteId){
+  const msg = document.getElementById('modal-participante-msg');
+  const grupo_moto_id = document.getElementById('mp-grupo-moto').value;
+
+  if(!grupo_moto_id){ msg.innerHTML = `<div class="msg err">Selecciona una moto.</div>`; return; }
+
+  const { error } = await sb.from('motosan_participantes').insert({
+    grupo_id: MOTOSAN_GRUPO_ACTIVO, cliente_id: clienteId, grupo_moto_id
+  });
+  if(error){ msg.innerHTML = `<div class="msg err">Error: ${error.message}</div>`; return; }
+  cerrarModal();
+  abrirGrupoMotosan(MOTOSAN_GRUPO_ACTIVO);
+}
+
+async function registrarPagoMotosan(participanteId, cuota){
+  await sb.from('motosan_pagos').insert({ participante_id: participanteId, monto: cuota, created_by: ESTADO.perfil.id });
+  abrirGrupoMotosan(MOTOSAN_GRUPO_ACTIVO);
+}
+
+async function hacerSorteoMotosan(grupoId){
+  const { data: grupo } = await sb.from('motosan_grupos').select('*').eq('id', grupoId).single();
+  const { data: participantes } = await sb.from('motosan_participantes')
+    .select('*, motosan_grupo_motos(monto_moto, cuota_semanal, producto_id, productos(nombre))')
+    .eq('grupo_id', grupoId).eq('activo', true).eq('gano', false);
+
+  const elegibles = [];
+  for(const p of (participantes||[])){
+    const cuota = Number(p.motosan_grupo_motos?.cuota_semanal || 0);
+    const { data: pagos } = await sb.from('motosan_pagos').select('*').eq('participante_id', p.id);
+    const totalPagado = (pagos||[]).reduce((s,pg)=>s+Number(pg.monto),0);
+    const semanasTranscurridas = Math.max(1, Math.floor((Date.now() - new Date(p.created_at).getTime()) / (7*24*60*60*1000)) + 1);
+    const semanasEsperadas = Math.min(semanasTranscurridas, grupo.semanas_totales);
+    const cuotasEsperadas = semanasEsperadas * cuota;
+    if(totalPagado >= cuotasEsperadas - cuota){ elegibles.push({ participante: p, totalPagado }); }
+  }
+
+  if(!elegibles.length){ alert('No hay participantes al día con sus pagos para entrar al sorteo este mes.'); return; }
+
+  const ganador = elegibles[Math.floor(Math.random() * elegibles.length)];
+  const { data: cliente } = await sb.from('clientes').select('*').eq('id', ganador.participante.cliente_id).single();
+  const nombreMoto = ganador.participante.motosan_grupo_motos?.productos?.nombre || 'su moto';
+  const productoId = ganador.participante.motosan_grupo_motos?.producto_id;
+  const montoMoto = Number(ganador.participante.motosan_grupo_motos?.monto_moto || 0);
+
+  if(!confirm(`🎉 El sorteo eligió a: ${cliente.nombre_completo} (moto: ${nombreMoto})\n\n¿Confirmar como ganador? Esto le entrega la moto de inventario y crea su cuenta por cobrar por el saldo restante.`)) return;
+
+  await sb.from('motosan_participantes').update({ gano: true, fecha_gano: new Date().toISOString() }).eq('id', ganador.participante.id);
+
+  const { data: invRow } = await sb.from('inventario').select('*').eq('sede_id', ESTADO.sedeSeleccionada).eq('producto_id', productoId).maybeSingle();
+  if(invRow){
+    await sb.from('inventario').update({ cantidad: Math.max(0, Number(invRow.cantidad) - 1), updated_at: new Date().toISOString() }).eq('id', invRow.id);
+  }
+  await sb.from('movimientos_inventario').insert({
+    sede_id: ESTADO.sedeSeleccionada, producto_id: productoId, tipo: 'salida_venta',
+    cantidad: 1, nota: `Motosán - entrega a ganador del sorteo (${cliente.nombre_completo})`, created_by: ESTADO.perfil.id
+  });
+
+  const saldoRestante = Math.max(0, montoMoto - ganador.totalPagado);
+  if(saldoRestante > 0){
+    await sb.from('cuentas_por_cobrar').insert({
+      sede_id: ESTADO.sedeSeleccionada, cliente_id: cliente.id,
+      descripcion: `Motosán "${grupo.nombre}" — ${nombreMoto} entregada, saldo restante a pagar`,
+      monto_total: montoMoto, saldo_pendiente: saldoRestante, estado: 'pagada_parcial'
+    });
+  }
+
+  alert(`¡${cliente.nombre_completo} ganó el sorteo! La moto fue descontada del inventario${saldoRestante > 0 ? ' y se creó su cuenta por cobrar por el saldo restante (visible en Cuentas por Cobrar).' : ', y no queda saldo pendiente.'}`);
+  abrirGrupoMotosan(grupoId);
+}
+
+/* =========================================================
+   PLAN AHORRO
+========================================================= */
+const METODOS_POR_MONEDA = {
+  USD: ['Efectivo', 'Zelle'],
+  COP: ['Efectivo', 'Bancolombia'],
+  VES: ['Pago móvil / Transferencia', 'Efectivo']
+};
+
+async function renderPlanAhorro(){
+  const cont = document.getElementById('contenido-tab');
+  cont.innerHTML = `<div class="empty">Cargando...</div>`;
+  await cargarProductosYClientes();
+
+  const { data: planes } = await sb.from('planes_ahorro')
+    .select('*, clientes(nombre_completo, telefono), productos(nombre)')
+    .eq('sede_id', ESTADO.sedeSeleccionada)
+    .order('created_at', {ascending:false});
+
+  cont.innerHTML = `
+    <div class="grid2">
+      <div class="card">
+        <h3>Nuevo Plan Ahorro</h3>
+        <div id="pa-nuevo-msg"></div>
+        <div class="form-row buscador-resultados">
+          <label>Cliente</label>
+          <input type="text" id="pa-buscar-cliente" placeholder="Buscar o escribir nombre nuevo..." oninput="buscarClienteInputPA(this.value)" autocomplete="off">
+          <div class="buscador-lista" id="pa-lista-clientes" style="display:none;"></div>
+        </div>
+        <input type="hidden" id="pa-cliente-id-seleccionado">
+        <div class="form-row">
+          <label>Moto que va a ahorrar</label>
+          <select id="pa-producto" onchange="autocompletarMontoPA()">
+            ${ESTADO.productos.map(p=>`<option value="${p.id}" data-precio="${p.precio}">${p.nombre} — ${money(p.precio)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-row"><label>Monto total de la moto (editable)</label><input type="number" id="pa-monto" min="0" step="0.01"></div>
+        <button class="btn" onclick="crearPlanAhorro()">Crear plan</button>
+      </div>
+
+      <div class="card">
+        <h3>Planes activos — ${sedeNombre(ESTADO.sedeSeleccionada)}</h3>
+        <table>
+          <thead><tr><th>Cliente</th><th>Moto</th><th>Total</th><th>Saldo</th><th>Estado</th><th></th></tr></thead>
+          <tbody>
+            ${(planes||[]).map(p=>`
+              <tr>
+                <td>${p.clientes?.nombre_completo}</td>
+                <td>${p.productos?.nombre}</td>
+                <td>${money(p.monto_moto)}</td>
+                <td style="color:var(--rojo); font-weight:600;">${money(p.saldo_pendiente)}</td>
+                <td><span class="badge ${p.estado}">${p.estado.replace('_',' ')}</span></td>
+                <td>${p.estado === 'pagada_completa' ? '—' : `<button class="btn chico" onclick="abrirModalPagoAhorro('${p.id}', ${p.saldo_pendiente})">+ Registrar pago</button>`}</td>
+              </tr>
+            `).join('') || `<tr><td colspan="6" class="empty">No hay planes de ahorro todavía</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function autocompletarMontoPA(){
+  const sel = document.getElementById('pa-producto');
+  document.getElementById('pa-monto').value = sel.options[sel.selectedIndex]?.dataset.precio || 0;
+}
+
+function buscarClienteInputPA(txt){
+  document.getElementById('pa-cliente-id-seleccionado').value = '';
+  const lista = document.getElementById('pa-lista-clientes');
+  if(!txt.trim()){ lista.style.display='none'; return; }
+  const t = txt.toLowerCase();
+  const results = ESTADO.clientes.filter(c => c.nombre_completo.toLowerCase().includes(t)).slice(0,8);
+  let html = results.map(c => `<div onclick="seleccionarClientePA('${c.id}','${c.nombre_completo.replace(/'/g,"\\'")}')">${c.nombre_completo}</div>`).join('');
+  html += `<div style="color:var(--rojo);" onclick="crearClienteRapidoPA('${txt.replace(/'/g,"\\'")}')">+ Crear cliente nuevo: "${txt}"</div>`;
+  lista.innerHTML = html;
+  lista.style.display = 'block';
+}
+function seleccionarClientePA(id, nombre){
+  document.getElementById('pa-cliente-id-seleccionado').value = id;
+  document.getElementById('pa-buscar-cliente').value = nombre;
+  document.getElementById('pa-lista-clientes').style.display = 'none';
+}
+async function crearClienteRapidoPA(nombre){
+  if(!nombre.trim()) return;
+  const { data, error } = await sb.from('clientes').insert({ nombre_completo: nombre.trim() }).select().single();
+  if(error){ alert('Error creando cliente: ' + error.message); return; }
+  ESTADO.clientes.push(data);
+  seleccionarClientePA(data.id, data.nombre_completo);
+}
+
+async function crearPlanAhorro(){
+  const msg = document.getElementById('pa-nuevo-msg');
+  const clienteId = document.getElementById('pa-cliente-id-seleccionado').value;
+  const productoId = document.getElementById('pa-producto').value;
+  const monto = parseFloat(document.getElementById('pa-monto').value);
+
+  if(!clienteId){ msg.innerHTML = `<div class="msg err">Selecciona o crea un cliente.</div>`; return; }
+  if(!productoId || !monto){ msg.innerHTML = `<div class="msg err">Selecciona la moto y el monto.</div>`; return; }
+
+  const { error } = await sb.from('planes_ahorro').insert({
+    sede_id: ESTADO.sedeSeleccionada, cliente_id: clienteId, producto_id: productoId,
+    monto_moto: monto, saldo_pendiente: monto, estado: 'pendiente', created_by: ESTADO.perfil.id
+  });
+  if(error){ msg.innerHTML = `<div class="msg err">Error: ${error.message}</div>`; return; }
+  msg.innerHTML = `<div class="msg ok">Plan de ahorro creado.</div>`;
+  renderPlanAhorro();
+}
+
+function abrirModalPagoAhorro(planId, saldo){
+  document.getElementById('modal-contenido').innerHTML = `
+    <h3>Registrar pago — Plan Ahorro</h3>
+    <div id="pa-pago-msg"></div>
+    <div class="form-row"><label>Saldo pendiente actual</label><input type="text" value="${money(saldo)}" disabled></div>
+    <div class="form-row">
+      <label>Moneda</label>
+      <select id="pa-pago-moneda" onchange="actualizarMetodosPA()">
+        <option value="USD">Dólares (USD)</option>
+        <option value="COP">Pesos colombianos (COP)</option>
+        <option value="VES">Bolívares (VES)</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label>Método de pago</label>
+      <select id="pa-pago-metodo"></select>
+    </div>
+    <div class="form-row"><label id="pa-pago-monto-label">Monto pagado (USD)</label><input type="number" id="pa-pago-monto" min="0.01" step="0.01" oninput="mostrarEquivalenciaPA()"></div>
+    <div class="form-row" id="pa-pago-tasa-wrap" style="display:none;">
+      <label>Tasa de cambio (1 USD = X)</label>
+      <input type="number" id="pa-pago-tasa" min="0" step="0.01" oninput="mostrarEquivalenciaPA()">
+      <div class="stock" id="pa-pago-equivale"></div>
+    </div>
+    <div class="acciones">
+      <button class="btn secundario" onclick="cerrarModal()">Cancelar</button>
+      <button class="btn" onclick="confirmarPagoAhorro('${planId}', ${saldo})">Registrar pago</button>
+    </div>
+  `;
+  document.getElementById('modal-bg').classList.add('activo');
+  actualizarMetodosPA();
+}
+
+function actualizarMetodosPA(){
+  const moneda = document.getElementById('pa-pago-moneda').value;
+  const metodoSel = document.getElementById('pa-pago-metodo');
+  metodoSel.innerHTML = METODOS_POR_MONEDA[moneda].map(m=>`<option value="${m}">${m}</option>`).join('');
+  document.getElementById('pa-pago-monto-label').textContent = moneda === 'USD' ? 'Monto pagado (USD)' : `Monto pagado (${moneda})`;
+  document.getElementById('pa-pago-tasa-wrap').style.display = moneda === 'USD' ? 'none' : 'block';
+  document.getElementById('pa-pago-equivale').textContent = '';
+}
+
+function mostrarEquivalenciaPA(){
+  const monto = parseFloat(document.getElementById('pa-pago-monto').value) || 0;
+  const tasa = parseFloat(document.getElementById('pa-pago-tasa').value) || 0;
+  const equivalente = tasa > 0 ? (monto / tasa) : 0;
+  document.getElementById('pa-pago-equivale').textContent = tasa > 0 ? `Equivale a ${money(equivalente)}` : '';
+}
+
+async function confirmarPagoAhorro(planId, saldoActual){
+  const msg = document.getElementById('pa-pago-msg');
+  const moneda = document.getElementById('pa-pago-moneda').value;
+  const metodo = document.getElementById('pa-pago-metodo').value;
+  const montoOriginal = parseFloat(document.getElementById('pa-pago-monto').value);
+
+  if(!montoOriginal || montoOriginal <= 0){ msg.innerHTML = `<div class="msg err">Ingresa un monto válido.</div>`; return; }
+
+  let montoUsd = montoOriginal;
+  let tasa = null;
+  if(moneda !== 'USD'){
+    tasa = parseFloat(document.getElementById('pa-pago-tasa').value);
+    if(!tasa || tasa <= 0){ msg.innerHTML = `<div class="msg err">Ingresa la tasa de cambio.</div>`; return; }
+    montoUsd = montoOriginal / tasa;
+  }
+
+  await sb.from('planes_ahorro_pagos').insert({
+    plan_id: planId, monto_usd: montoUsd, moneda, metodo,
+    monto_original: montoOriginal, tasa_cambio: tasa, created_by: ESTADO.perfil.id
+  });
+
+  const nuevoSaldo = Math.max(0, saldoActual - montoUsd);
+  const nuevoEstado = nuevoSaldo <= 0 ? 'pagada_completa' : 'pagada_parcial';
+  const { data: plan } = await sb.from('planes_ahorro').update({ saldo_pendiente: nuevoSaldo, estado: nuevoEstado }).eq('id', planId).select().single();
+
+  // Caja
+  const { data: caja } = await sb.from('cajas').select('*').eq('sede_id', ESTADO.sedeSeleccionada).single();
+  if(caja){
+    await sb.from('movimientos_caja').insert({
+      caja_id: caja.id, sede_id: ESTADO.sedeSeleccionada, tipo: 'ingreso_abono', monto: montoUsd,
+      descripcion: `Plan Ahorro — pago en ${moneda} por ${metodo}${tasa ? ` (tasa ${tasa})` : ''}`,
+      referencia_id: planId, created_by: ESTADO.perfil.id
+    });
+    await sb.from('cajas').update({ saldo_actual: Number(caja.saldo_actual) + montoUsd }).eq('id', caja.id);
+  }
+
+  // Si se completó el plan: entregar la moto (descontar inventario)
+  if(nuevoEstado === 'pagada_completa' && plan){
+    const { data: invRow } = await sb.from('inventario').select('*').eq('sede_id', ESTADO.sedeSeleccionada).eq('producto_id', plan.producto_id).maybeSingle();
+    if(invRow){
+      await sb.from('inventario').update({ cantidad: Math.max(0, Number(invRow.cantidad) - 1), updated_at: new Date().toISOString() }).eq('id', invRow.id);
+    }
+    await sb.from('movimientos_inventario').insert({
+      sede_id: ESTADO.sedeSeleccionada, producto_id: plan.producto_id, tipo: 'salida_venta',
+      cantidad: 1, nota: 'Plan Ahorro completado — moto entregada', created_by: ESTADO.perfil.id
+    });
+  }
+
+  cerrarModal();
+  renderPlanAhorro();
+}
+
+/* =========================================================
+   COMPRAS
+========================================================= */
+let FACTURA_ITEMS = []; // items extraídos/emparejados de la factura en curso
+let FACTURA_IMG_BASE64 = null;
+let FACTURA_IMG_MEDIA = null;
+
+async function renderCompras(){
+  const cont = document.getElementById('contenido-tab');
+  cont.innerHTML = `<div class="empty">Cargando...</div>`;
+  await cargarProductosYClientes();
+
+  const { data: proveedores } = await sb.from('proveedores').select('*').order('nombre');
+  ESTADO.proveedores = proveedores || [];
+
+  const { data: compras } = await sb.from('compras')
+    .select('*, proveedores(nombre)')
+    .eq('sede_id', ESTADO.sedeSeleccionada)
+    .order('created_at', {ascending:false}).limit(30);
+
+  const { data: retencionesPendientes } = await sb.from('compras')
+    .select('*, proveedores(nombre)')
+    .eq('sede_id', ESTADO.sedeSeleccionada)
+    .eq('aplica_retencion', true)
+    .eq('retencion_enterada', false)
+    .order('created_at', {ascending:false});
+
+  FACTURA_ITEMS = [];
+  FACTURA_IMG_BASE64 = null;
+
+  cont.innerHTML = `
+    <div class="grid2">
+      <div class="card">
+        <h3>Nueva compra — ${sedeNombre(ESTADO.sedeSeleccionada)}</h3>
+        <div class="stock" style="margin-top:-8px; margin-bottom:14px;">${razonSocial(ESTADO.sedeSeleccionada)}</div>
+        <div id="compra-msg"></div>
+
+        <div class="form-row">
+          <label>Foto de la factura</label>
+          <input type="file" id="factura-file" accept="image/*" onchange="cargarFotoFactura(this)">
+        </div>
+        <div id="factura-preview"></div>
+        <button class="btn secundario" id="btn-leer-factura" style="margin-top:8px; display:none;" onclick="leerFacturaConIA()">📷 Leer factura con IA</button>
+
+        <div id="factura-items-wrap" style="margin-top:18px;"></div>
+
+        <div class="inline-2" style="margin-top:16px;">
+          <div class="form-row">
+            <label>Proveedor</label>
+            <input type="text" id="compra-proveedor" placeholder="Nombre del proveedor" list="lista-proveedores">
+            <datalist id="lista-proveedores">
+              ${(ESTADO.proveedores||[]).map(p=>`<option value="${p.nombre}">`).join('')}
+            </datalist>
+          </div>
+          <div class="form-row">
+            <label>Número de factura</label>
+            <input type="text" id="compra-numero-factura" placeholder="Ej: 00012345">
+          </div>
+        </div>
+        <div class="form-row">
+          <label>Forma de pago</label>
+          <select id="compra-modalidad" onchange="onModalidadCompraChange()">
+            <option value="contado">Contado</option>
+            <option value="credito_directo">Crédito (queda como cuenta por pagar)</option>
+          </select>
+        </div>
+        <div id="compra-abono-wrap" style="display:none;">
+          <div class="form-row">
+            <label>Monto pagado ahora (opcional)</label>
+            <input type="number" id="compra-abono" min="0" step="0.01" placeholder="0.00">
+          </div>
+        </div>
+
+        <div class="form-row" style="margin-top:10px;">
+          <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+            <input type="checkbox" id="compra-aplica-retencion" onchange="onRetencionChange()" style="width:auto;">
+            Somos agente de retención — esta compra aplica retención de IVA
+          </label>
+        </div>
+        <div id="compra-retencion-wrap" style="display:none;">
+          <div class="inline-2">
+            <div class="form-row"><label>IVA de la factura (según el proveedor)</label><input type="number" id="compra-iva" min="0" step="0.01" placeholder="0.00" oninput="calcularRetencion()"></div>
+            <div class="form-row"><label>% de retención</label><input type="number" id="compra-retencion-pct" min="0" max="100" step="0.01" value="75" oninput="calcularRetencion()"></div>
+          </div>
+          <div class="form-row"><label>Fecha límite para enterar la retención (te la indica tu contadora)</label><input type="date" id="compra-retencion-fecha-limite"></div>
+          <div class="stock" id="compra-retencion-resumen"></div>
+        </div>
+
+        <div class="total-venta">Total: <span id="total-compra">$0.00</span></div>
+        <button class="btn" style="margin-top:10px;" onclick="registrarCompra()">Registrar compra y sumar a inventario</button>
+      </div>
+
+      <div class="card">
+        <h3>Compras recientes de esta sede</h3>
+        <table>
+          <thead><tr><th>Fecha</th><th>Proveedor</th><th>Modalidad</th><th>Total</th><th>Estado</th></tr></thead>
+          <tbody>
+            ${(compras||[]).map(c=>`
+              <tr>
+                <td>${fecha(c.created_at)}</td>
+                <td>${c.proveedores?.nombre || '—'}</td>
+                <td><span class="badge ${c.modalidad}">${MODALIDADES[c.modalidad]||c.modalidad}</span></td>
+                <td>${money(c.total)}</td>
+                <td><span class="badge ${c.estado}">${c.estado.replace('_',' ')}</span></td>
+              </tr>
+            `).join('') || `<tr><td colspan="5" class="empty">Sin compras todavía</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Retenciones de IVA pendientes de enterar al SENIAT</h3>
+      <table>
+        <thead><tr><th>Fecha compra</th><th>Factura</th><th>Proveedor</th><th>IVA factura</th><th>% retenido</th><th>Monto retenido</th><th>Fecha límite</th><th></th></tr></thead>
+        <tbody>
+          ${(retencionesPendientes||[]).map(c=>{
+            const vencida = c.retencion_fecha_limite && new Date(c.retencion_fecha_limite) < new Date(new Date().toDateString());
+            return `
+            <tr>
+              <td>${fecha(c.created_at)}</td>
+              <td>${c.numero_factura || '—'}</td>
+              <td>${c.proveedores?.nombre || '—'}</td>
+              <td>${money(c.monto_iva)}</td>
+              <td>${c.retencion_pct}%</td>
+              <td style="color:var(--rojo); font-weight:600;">${money(c.monto_retenido)}</td>
+              <td>${c.retencion_fecha_limite ? `<span style="${vencida ? 'color:var(--rojo); font-weight:600;' : ''}">${c.retencion_fecha_limite}${vencida ? ' ⚠️ vencida' : ''}</span>` : '—'}</td>
+              <td><button class="btn chico" onclick="abrirModalEnterarRetencion('${c.id}')">Marcar enterada</button></td>
+            </tr>
+          `;}).join('') || `<tr><td colspan="8" class="empty">No hay retenciones pendientes de enterar 🎉</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function onRetencionChange(){
+  const activo = document.getElementById('compra-aplica-retencion').checked;
+  document.getElementById('compra-retencion-wrap').style.display = activo ? 'block' : 'none';
+  calcularRetencion();
+}
+
+function calcularRetencion(){
+  const iva = parseFloat(document.getElementById('compra-iva').value) || 0;
+  const pct = parseFloat(document.getElementById('compra-retencion-pct').value) || 0;
+  const retenido = iva * (pct/100);
+  document.getElementById('compra-retencion-resumen').textContent =
+    `Se retiene ${money(retenido)} de IVA (queda pendiente de enterar al SENIAT). Ese monto se descuenta de lo que le pagas al proveedor.`;
+}
+
+function abrirModalEnterarRetencion(compraId){
+  document.getElementById('modal-contenido').innerHTML = `
+    <h3>Marcar retención como enterada</h3>
+    <div id="enterar-msg"></div>
+    <div class="form-row"><label>Número de comprobante / planilla (opcional)</label><input type="text" id="enterar-comprobante" placeholder="Opcional"></div>
+    <div class="acciones">
+      <button class="btn secundario" onclick="cerrarModal()">Cancelar</button>
+      <button class="btn" onclick="confirmarEnterarRetencion('${compraId}')">Confirmar</button>
+    </div>
+  `;
+  document.getElementById('modal-bg').classList.add('activo');
+}
+
+async function confirmarEnterarRetencion(compraId){
+  const numero = document.getElementById('enterar-comprobante').value.trim() || null;
+  await sb.from('compras').update({
+    retencion_enterada: true, retencion_fecha_entero: new Date().toISOString(), retencion_numero_comprobante: numero
+  }).eq('id', compraId);
+  cerrarModal();
+  renderCompras();
+}
+
+function cargarFotoFactura(input){
+  const file = input.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const resultado = e.target.result; // data:image/xxx;base64,....
+    FACTURA_IMG_MEDIA = file.type || 'image/jpeg';
+    FACTURA_IMG_BASE64 = resultado.split(',')[1];
+    document.getElementById('factura-preview').innerHTML = `<img src="${resultado}" style="max-width:100%; border-radius:8px; margin-top:8px; border:1px solid var(--borde);">`;
+    document.getElementById('btn-leer-factura').style.display = 'inline-block';
+  };
+  reader.readAsDataURL(file);
+}
+
+async function leerFacturaConIA(){
+  const btn = document.getElementById('btn-leer-factura');
+  const msg = document.getElementById('compra-msg');
+  msg.innerHTML = '';
+  if(!FACTURA_IMG_BASE64){ msg.innerHTML = `<div class="msg err">Sube primero una foto de la factura.</div>`; return; }
+
+  btn.disabled = true; btn.textContent = 'Leyendo factura...';
+
+  try{
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 1000,
+        messages: [{
+          role: "user",
+          content: [
+            { type: "image", source: { type: "base64", media_type: FACTURA_IMG_MEDIA, data: FACTURA_IMG_BASE64 } },
+            { type: "text", text: "Esta imagen es una factura de compra de mercancía (motos, repuestos, cascos, accesorios, aceite). Responde ÚNICAMENTE con un objeto JSON, sin markdown ni texto adicional, con este formato exacto: {\"numero_factura\": \"string o null si no aparece\", \"proveedor\": \"string o null si no aparece\", \"iva\": number o null si no aparece un monto de IVA en la factura, \"items\": [{\"nombre\": \"string\", \"codigo\": \"string o null si no aparece\", \"cantidad\": number, \"precio_unitario\": number}]}. \"numero_factura\" es el número o código de control impreso en la factura (usualmente arriba). \"proveedor\" es el nombre de la empresa que emite la factura (el vendedor, no el comprador). \"iva\" es el monto total de IVA de la factura si aparece desglosado. El campo \"codigo\" de cada item es el código/SKU/referencia del proveedor si aparece impreso junto al producto. No incluyas en \"items\" líneas de impuestos, envío, descuentos o totales. Si no puedes leer el precio unitario de una línea, usa 0." }
+          ]
+        }]
+      })
+    });
+    const data = await response.json();
+    const textoRespuesta = (data.content || []).filter(b=>b.type==='text').map(b=>b.text).join('');
+    const limpio = textoRespuesta.replace(/```json|```/g, '').trim();
+    const resultado = JSON.parse(limpio);
+    const items = resultado.items || [];
+
+    FACTURA_ITEMS = items.map(it => {
+      const match = mejorMatchProducto(it.nombre, it.codigo);
+      return {
+        nombre_factura: it.nombre,
+        codigo_factura: it.codigo || null,
+        cantidad: Number(it.cantidad) || 1,
+        precio_unitario: Number(it.precio_unitario) || 0,
+        producto_id: match ? match.producto.id : null,
+        producto_nombre: match ? match.producto.nombre : null,
+        score: match ? match.score : 0,
+        porCodigo: match ? match.porCodigo : false,
+        crear_nuevo: !match
+      };
+    });
+
+    // Autocompletar número de factura y proveedor leídos de la imagen
+    if(resultado.numero_factura){
+      document.getElementById('compra-numero-factura').value = resultado.numero_factura;
+    }
+    if(resultado.proveedor && !document.getElementById('compra-proveedor').value.trim()){
+      document.getElementById('compra-proveedor').value = resultado.proveedor;
+    }
+    if(resultado.iva){
+      const checkboxRetencion = document.getElementById('compra-aplica-retencion');
+      if(checkboxRetencion.checked){
+        document.getElementById('compra-iva').value = resultado.iva;
+        calcularRetencion();
+      }
+    }
+
+    renderItemsFactura();
+    const extras = [];
+    if(resultado.numero_factura) extras.push(`factura N° ${resultado.numero_factura}`);
+    if(resultado.proveedor) extras.push(`proveedor "${resultado.proveedor}"`);
+    msg.innerHTML = `<div class="msg ok">Factura leída: ${FACTURA_ITEMS.length} línea(s) encontradas${extras.length ? ' — ' + extras.join(', ') : ''}. Revisa los emparejamientos abajo.</div>`;
+  } catch(err){
+    msg.innerHTML = `<div class="msg err">No se pudo leer la factura automáticamente. Intenta con una foto más clara, o agrega los productos manualmente abajo.</div>`;
+    FACTURA_ITEMS = [];
+    renderItemsFactura();
+  }
+
+  btn.disabled = false; btn.textContent = '📷 Leer factura con IA';
+}
+
+function renderItemsFactura(){
+  const wrap = document.getElementById('factura-items-wrap');
+  if(!FACTURA_ITEMS.length){
+    wrap.innerHTML = `
+      <div class="empty">No hay líneas cargadas.</div>
+      <button class="btn secundario chico" onclick="agregarLineaFacturaManual()">+ Agregar línea manual</button>
+    `;
+    actualizarTotalCompra();
+    return;
+  }
+
+  wrap.innerHTML = FACTURA_ITEMS.map((it, i) => `
+    <div class="card" style="background:var(--negro3); padding:14px; margin-bottom:10px;">
+      <div style="font-size:13px; color:var(--carbon); margin-bottom:6px;">Texto de la factura: "${it.nombre_factura}"${it.codigo_factura ? ` — código: ${it.codigo_factura}` : ''}</div>
+      <div class="inline-2">
+        <div class="form-row" style="margin-bottom:8px;">
+          <label>Producto en catálogo</label>
+          ${it.crear_nuevo ? `
+            <input type="text" value="${it.producto_nombre || it.nombre_factura}" onchange="editarNombreNuevoProducto(${i}, this.value)">
+            <div class="stock" style="color:var(--rojo);">Sin coincidencia — se creará como producto nuevo${it.codigo_factura ? ` (con código ${it.codigo_factura})` : ''}</div>
+          ` : `
+            <input type="text" value="${it.producto_nombre}" readonly>
+            <div class="stock">${it.porCodigo ? '✅ Coincidencia exacta por código' : `Coincidencia ${Math.round(it.score*100)}% por nombre`} — <span style="cursor:pointer; text-decoration:underline;" onclick="quitarMatchLinea(${i})">quitar coincidencia</span></div>
+          `}
+        </div>
+        <div class="form-row" style="margin-bottom:8px;">
+          <label>Cantidad</label>
+          <input type="number" min="0.01" step="0.01" value="${it.cantidad}" onchange="editarCantidadLinea(${i}, this.value)">
+        </div>
+      </div>
+      <div class="form-row" style="margin-bottom:0;">
+        <label>Costo unitario</label>
+        <input type="number" min="0" step="0.01" value="${it.precio_unitario}" onchange="editarPrecioLinea(${i}, this.value)">
+      </div>
+      <div style="text-align:right; margin-top:8px;">
+        <span class="quitar" onclick="quitarLineaFactura(${i})">Quitar línea ✕</span>
+      </div>
+    </div>
+  `).join('') + `<button class="btn secundario chico" onclick="agregarLineaFacturaManual()">+ Agregar línea manual</button>`;
+
+  actualizarTotalCompra();
+}
+
+function editarNombreNuevoProducto(i, val){ FACTURA_ITEMS[i].producto_nombre = val; }
+function editarCantidadLinea(i, val){ FACTURA_ITEMS[i].cantidad = parseFloat(val)||0; actualizarTotalCompra(); }
+function editarPrecioLinea(i, val){ FACTURA_ITEMS[i].precio_unitario = parseFloat(val)||0; actualizarTotalCompra(); }
+function quitarLineaFactura(i){ FACTURA_ITEMS.splice(i,1); renderItemsFactura(); }
+function quitarMatchLinea(i){
+  FACTURA_ITEMS[i].crear_nuevo = true;
+  FACTURA_ITEMS[i].producto_id = null;
+  FACTURA_ITEMS[i].producto_nombre = FACTURA_ITEMS[i].nombre_factura;
+  renderItemsFactura();
+}
+function agregarLineaFacturaManual(){
+  FACTURA_ITEMS.push({ nombre_factura: '(manual)', cantidad: 1, precio_unitario: 0, producto_id: null, producto_nombre: '', score: 0, crear_nuevo: true });
+  renderItemsFactura();
+}
+function actualizarTotalCompra(){
+  const total = FACTURA_ITEMS.reduce((s,it)=>s + it.cantidad*it.precio_unitario, 0);
+  const el = document.getElementById('total-compra');
+  if(el) el.textContent = money(total);
+}
+
+async function registrarCompra(){
+  const msg = document.getElementById('compra-msg');
+  msg.innerHTML = '';
+
+  if(!FACTURA_ITEMS.length){ msg.innerHTML = `<div class="msg err">Agrega al menos un producto a la compra.</div>`; return; }
+  const nombreProveedor = document.getElementById('compra-proveedor').value.trim();
+  const numeroFactura = document.getElementById('compra-numero-factura').value.trim() || null;
+  const modalidad = document.getElementById('compra-modalidad').value;
+  const total = FACTURA_ITEMS.reduce((s,it)=>s + it.cantidad*it.precio_unitario, 0);
+
+  const aplicaRetencion = document.getElementById('compra-aplica-retencion').checked;
+  const montoIva = aplicaRetencion ? (parseFloat(document.getElementById('compra-iva').value) || 0) : 0;
+  const retencionPct = aplicaRetencion ? (parseFloat(document.getElementById('compra-retencion-pct').value) || 0) : 0;
+  const retencionFechaLimite = aplicaRetencion ? (document.getElementById('compra-retencion-fecha-limite').value || null) : null;
+  const montoRetenido = aplicaRetencion ? montoIva * (retencionPct/100) : 0;
+  const montoAPagarProveedor = Math.max(0, total - montoRetenido);
+
+  let montoPagado = montoAPagarProveedor;
+  if(modalidad === 'credito_directo'){
+    montoPagado = parseFloat(document.getElementById('compra-abono').value) || 0;
+    if(montoPagado > montoAPagarProveedor){ msg.innerHTML = `<div class="msg err">El abono no puede ser mayor a lo que se le debe al proveedor (${money(montoAPagarProveedor)}).</div>`; return; }
+  }
+
+  // Proveedor: buscar o crear
+  let proveedorId = null;
+  if(nombreProveedor){
+    const existente = ESTADO.proveedores.find(p => p.nombre.toLowerCase() === nombreProveedor.toLowerCase());
+    if(existente){ proveedorId = existente.id; }
+    else {
+      const { data: nuevoProv } = await sb.from('proveedores').insert({ nombre: nombreProveedor }).select().single();
+      proveedorId = nuevoProv?.id || null;
+    }
+  }
+
+  // Crear productos nuevos donde haga falta
+  for(const it of FACTURA_ITEMS){
+    if(it.crear_nuevo){
+      const { data: nuevoProd, error } = await sb.from('productos').insert({
+        nombre: it.producto_nombre || it.nombre_factura, precio: it.precio_unitario, sku: it.codigo_factura || null
+      }).select().single();
+      if(error){ msg.innerHTML = `<div class="msg err">Error creando producto "${it.nombre_factura}": ${error.message}</div>`; return; }
+      it.producto_id = nuevoProd.id;
+      ESTADO.productos.push(nuevoProd);
+    }
+  }
+
+  const estadoCompra = modalidad === 'contado' ? 'pagada_completa' : (montoPagado >= montoAPagarProveedor ? 'pagada_completa' : (montoPagado > 0 ? 'pagada_parcial' : 'pendiente'));
+
+  const { data: compra, error: errCompra } = await sb.from('compras').insert({
+    sede_id: ESTADO.sedeSeleccionada, proveedor_id: proveedorId, modalidad, numero_factura: numeroFactura,
+    estado: estadoCompra, total, monto_pagado: montoPagado, created_by: ESTADO.perfil.id,
+    aplica_retencion: aplicaRetencion, monto_iva: montoIva, retencion_pct: retencionPct, monto_retenido: montoRetenido,
+    retencion_fecha_limite: retencionFechaLimite
+  }).select().single();
+  if(errCompra){ msg.innerHTML = `<div class="msg err">Error: ${errCompra.message}</div>`; return; }
+
+  // Items de compra
+  const itemsInsert = FACTURA_ITEMS.map(it => ({
+    compra_id: compra.id, producto_id: it.producto_id, cantidad: it.cantidad,
+    costo_unitario: it.precio_unitario, subtotal: it.cantidad * it.precio_unitario
+  }));
+  await sb.from('compra_items').insert(itemsInsert);
+
+  // Sumar inventario + movimientos
+  for(const it of FACTURA_ITEMS){
+    const { data: existenteInv } = await sb.from('inventario').select('*')
+      .eq('sede_id', ESTADO.sedeSeleccionada).eq('producto_id', it.producto_id).maybeSingle();
+    if(existenteInv){
+      await sb.from('inventario').update({ cantidad: Number(existenteInv.cantidad) + it.cantidad, updated_at: new Date().toISOString() }).eq('id', existenteInv.id);
+    } else {
+      await sb.from('inventario').insert({ sede_id: ESTADO.sedeSeleccionada, producto_id: it.producto_id, cantidad: it.cantidad });
+    }
+    await sb.from('movimientos_inventario').insert({
+      sede_id: ESTADO.sedeSeleccionada, producto_id: it.producto_id, tipo: 'entrada_compra',
+      cantidad: it.cantidad, referencia_id: compra.id, created_by: ESTADO.perfil.id
+    });
+  }
+
+  // Caja (si se pagó algo ahora)
+  if(montoPagado > 0){
+    const { data: caja } = await sb.from('cajas').select('*').eq('sede_id', ESTADO.sedeSeleccionada).single();
+    if(caja){
+      await sb.from('movimientos_caja').insert({
+        caja_id: caja.id, sede_id: ESTADO.sedeSeleccionada, tipo: 'egreso_compra', monto: montoPagado,
+        descripcion: `Compra${nombreProveedor ? ' a ' + nombreProveedor : ''}`, referencia_id: compra.id, created_by: ESTADO.perfil.id
+      });
+      await sb.from('cajas').update({ saldo_actual: Number(caja.saldo_actual) - montoPagado }).eq('id', caja.id);
+    }
+  }
+
+  // Cuenta por pagar si quedó saldo (sobre lo que se le debe al proveedor, no sobre el total con IVA retenido)
+  if(modalidad === 'credito_directo' && estadoCompra !== 'pagada_completa' && proveedorId){
+    await sb.from('cuentas_por_pagar').insert({
+      compra_id: compra.id, sede_id: ESTADO.sedeSeleccionada, proveedor_id: proveedorId,
+      monto_total: montoAPagarProveedor, saldo_pendiente: montoAPagarProveedor - montoPagado, estado: estadoCompra
+    });
+  }
+
+  msg.innerHTML = `<div class="msg ok">Compra registrada. Inventario actualizado.${montoRetenido > 0 ? ` Se retuvo ${money(montoRetenido)} de IVA — queda pendiente en la sección de retenciones de abajo.` : ''}</div>`;
+  renderCompras();
+}
+
+/* =========================================================
+   CAJA
+========================================================= */
+async function renderCaja(){
+  const cont = document.getElementById('contenido-tab');
+  cont.innerHTML = `<div class="empty">Cargando...</div>`;
+
+  const { data: caja } = await sb.from('cajas').select('*').eq('sede_id', ESTADO.sedeSeleccionada).single();
+  const { data: movimientos } = await sb.from('movimientos_caja')
+    .select('*').eq('sede_id', ESTADO.sedeSeleccionada)
+    .order('created_at', {ascending:false}).limit(60);
+
+  const ingresos = (movimientos||[]).filter(m=>m.tipo.startsWith('ingreso')).reduce((s,m)=>s+Number(m.monto),0);
+  const egresos = (movimientos||[]).filter(m=>m.tipo.startsWith('egreso')).reduce((s,m)=>s+Number(m.monto),0);
+
+  cont.innerHTML = `
+    <div class="kpis">
+      <div class="kpi"><div class="label">Saldo actual — ${sedeNombre(ESTADO.sedeSeleccionada)}</div><div class="valor">${money(caja?.saldo_actual)}</div></div>
+      <div class="kpi verde"><div class="label">Ingresos (últimos mov.)</div><div class="valor">${money(ingresos)}</div></div>
+      <div class="kpi rojo"><div class="label">Egresos (últimos mov.)</div><div class="valor">${money(egresos)}</div></div>
+    </div>
+
+    <div class="card">
+      <h3>Registrar egreso (gasto)</h3>
+      <div id="gasto-msg"></div>
+      <div class="inline-3">
+        <div class="form-row" style="margin-bottom:0;">
+          <label>Tipo de gasto</label>
+          <select id="tipo-gasto">
+            ${Object.entries(TIPOS_GASTO).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-row" style="margin-bottom:0;">
+          <label>Monto</label>
+          <input type="number" id="monto-gasto" min="0" step="0.01" placeholder="0.00">
+        </div>
+        <div class="form-row" style="margin-bottom:0;">
+          <label>Descripción</label>
+          <input type="text" id="desc-gasto" placeholder="Opcional">
+        </div>
+        <button class="btn chico" onclick="registrarGasto()">Registrar</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Movimientos recientes</h3>
+      <table>
+        <thead><tr><th>Fecha</th><th>Tipo</th><th>Descripción</th><th>Monto</th></tr></thead>
+        <tbody>
+          ${(movimientos||[]).map(m=>`
+            <tr>
+              <td>${fecha(m.created_at)}</td>
+              <td>${m.tipo.replace('_',' ')}</td>
+              <td>${m.descripcion||'—'}</td>
+              <td style="color:${m.tipo.startsWith('ingreso')?'var(--verde)':'var(--rojo)'}">
+                ${m.tipo.startsWith('ingreso')?'+':'-'}${money(m.monto)}
+              </td>
+            </tr>
+          `).join('') || `<tr><td colspan="4" class="empty">Sin movimientos todavía</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+async function registrarGasto(){
+  const msg = document.getElementById('gasto-msg');
+  const tipo = document.getElementById('tipo-gasto').value;
+  const monto = parseFloat(document.getElementById('monto-gasto').value);
+  const desc = document.getElementById('desc-gasto').value.trim();
+
+  if(!monto || monto <= 0){ msg.innerHTML = `<div class="msg err">Ingresa un monto válido.</div>`; return; }
+
+  const { data: gasto, error } = await sb.from('gastos').insert({
+    sede_id: ESTADO.sedeSeleccionada, tipo, monto, descripcion: desc, created_by: ESTADO.perfil.id
+  }).select().single();
+  if(error){ msg.innerHTML = `<div class="msg err">Error: ${error.message}</div>`; return; }
+
+  const { data: caja } = await sb.from('cajas').select('*').eq('sede_id', ESTADO.sedeSeleccionada).single();
+  if(caja){
+    const tipoMovimiento = 'egreso_' + (tipo === 'pago_empleado' ? 'pago_empleado' : tipo);
+    await sb.from('movimientos_caja').insert({
+      caja_id: caja.id, sede_id: ESTADO.sedeSeleccionada, tipo: tipoMovimiento, monto,
+      descripcion: desc || TIPOS_GASTO[tipo], referencia_id: gasto.id, created_by: ESTADO.perfil.id
+    });
+    await sb.from('cajas').update({ saldo_actual: Number(caja.saldo_actual) - monto }).eq('id', caja.id);
+  }
+  renderCaja();
+}
+
+/* =========================================================
+   FINANZAS
+========================================================= */
+let FINANZAS_RANGO = 'mes';
+
+async function renderFinanzas(){
+  const cont = document.getElementById('contenido-tab');
+  cont.innerHTML = `<div class="empty">Cargando...</div>`;
+
+  cont.innerHTML = `
+    <div class="tabs-sub" id="finanzas-rango-tabs">
+      <button class="activo" onclick="cambiarRangoFinanzas('hoy', this)">Hoy</button>
+      <button onclick="cambiarRangoFinanzas('semana', this)">Esta semana</button>
+      <button onclick="cambiarRangoFinanzas('mes', this)">Este mes</button>
+      <button onclick="cambiarRangoFinanzas('personalizado', this)">Personalizado</button>
+    </div>
+    <div id="finanzas-rango-personalizado" style="display:none; margin-bottom:16px;">
+      <div class="inline-2" style="max-width:420px;">
+        <div class="form-row" style="margin-bottom:0;"><label>Desde</label><input type="date" id="finanzas-desde"></div>
+        <div class="form-row" style="margin-bottom:0;"><label>Hasta</label><input type="date" id="finanzas-hasta"></div>
+      </div>
+      <button class="btn chico secundario" style="margin-top:10px;" onclick="calcularFinanzas()">Aplicar</button>
+    </div>
+    <div id="finanzas-contenido"><div class="empty">Cargando...</div></div>
+  `;
+
+  FINANZAS_RANGO = 'hoy';
+  calcularFinanzas();
+}
+
+function cambiarRangoFinanzas(rango, btn){
+  FINANZAS_RANGO = rango;
+  document.querySelectorAll('#finanzas-rango-tabs button').forEach(b=>b.classList.remove('activo'));
+  btn.classList.add('activo');
+  document.getElementById('finanzas-rango-personalizado').style.display = rango === 'personalizado' ? 'block' : 'none';
+  if(rango !== 'personalizado') calcularFinanzas();
+}
+
+function calcularRangoFechas(){
+  const ahora = new Date();
+  let desde, hasta;
+  if(FINANZAS_RANGO === 'hoy'){
+    desde = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate());
+    hasta = new Date(desde.getTime() + 24*60*60*1000);
+  } else if(FINANZAS_RANGO === 'semana'){
+    const diaSemana = ahora.getDay();
+    desde = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() - diaSemana);
+    hasta = new Date(desde.getTime() + 7*24*60*60*1000);
+  } else if(FINANZAS_RANGO === 'mes'){
+    desde = new Date(ahora.getFullYear(), ahora.getMonth(), 1);
+    hasta = new Date(ahora.getFullYear(), ahora.getMonth()+1, 1);
+  } else {
+    const desdeVal = document.getElementById('finanzas-desde').value;
+    const hastaVal = document.getElementById('finanzas-hasta').value;
+    if(!desdeVal || !hastaVal){ return null; }
+    desde = new Date(desdeVal + 'T00:00:00');
+    hasta = new Date(hastaVal + 'T23:59:59');
+  }
+  return { desde, hasta };
+}
+
+async function calcularFinanzas(){
+  const cont = document.getElementById('finanzas-contenido');
+  cont.innerHTML = `<div class="empty">Calculando...</div>`;
+
+  const rango = calcularRangoFechas();
+  if(!rango){ cont.innerHTML = `<div class="empty">Selecciona las fechas y presiona Aplicar.</div>`; return; }
+  const { desde, hasta } = rango;
+
+  // Ventas del rango en esta sede
+  const { data: ventas } = await sb.from('ventas')
+    .select('*, venta_items(cantidad, precio_unitario, subtotal, producto_id)')
+    .eq('sede_id', ESTADO.sedeSeleccionada)
+    .gte('created_at', desde.toISOString()).lt('created_at', hasta.toISOString());
+
+  // Costos de producto para calcular costo de mercancía vendida
+  const { data: productos } = await sb.from('productos').select('id, costo');
+  const costoPorProducto = {};
+  (productos||[]).forEach(p => costoPorProducto[p.id] = Number(p.costo||0));
+
+  let ingresosPorVentas = 0;
+  let costoMercancia = 0;
+  (ventas||[]).forEach(v => {
+    ingresosPorVentas += Number(v.total);
+    (v.venta_items||[]).forEach(item => {
+      costoMercancia += Number(item.cantidad) * (costoPorProducto[item.producto_id] || 0);
+    });
+  });
+
+  // Abonos recibidos en el rango (cuentas por cobrar) — dinero que entró aunque la venta fuera de antes
+  const { data: movCajaIngresos } = await sb.from('movimientos_caja')
+    .select('*')
+    .eq('sede_id', ESTADO.sedeSeleccionada)
+    .in('tipo', ['ingreso_venta','ingreso_abono'])
+    .gte('created_at', desde.toISOString()).lt('created_at', hasta.toISOString());
+  const ingresosCaja = (movCajaIngresos||[]).reduce((s,m)=>s+Number(m.monto),0);
+
+  // Gastos del rango, desglosados por tipo
+  const { data: gastos } = await sb.from('gastos')
+    .select('*')
+    .eq('sede_id', ESTADO.sedeSeleccionada)
+    .gte('created_at', desde.toISOString()).lt('created_at', hasta.toISOString());
+  const totalGastos = (gastos||[]).reduce((s,g)=>s+Number(g.monto),0);
+  const gastosPorTipo = {};
+  (gastos||[]).forEach(g => { gastosPorTipo[g.tipo] = (gastosPorTipo[g.tipo]||0) + Number(g.monto); });
+
+  const utilidad = ingresosPorVentas - costoMercancia - totalGastos;
+
+  cont.innerHTML = `
+    <div class="kpis">
+      <div class="kpi verde"><div class="label">Ingresos (ventas del período)</div><div class="valor">${money(ingresosPorVentas)}</div></div>
+      <div class="kpi"><div class="label">Costo de mercancía vendida</div><div class="valor">${money(costoMercancia)}</div></div>
+      <div class="kpi rojo"><div class="label">Gastos operativos</div><div class="valor">${money(totalGastos)}</div></div>
+      <div class="kpi ${utilidad >= 0 ? 'verde' : 'rojo'}"><div class="label">Utilidad estimada</div><div class="valor">${money(utilidad)}</div></div>
+    </div>
+
+    <div class="card">
+      <h3>Dinero que entró a caja en el período (ventas + abonos)</h3>
+      <div class="kpi verde" style="max-width:260px;"><div class="label">Total ingresado a caja</div><div class="valor">${money(ingresosCaja)}</div></div>
+      <div class="stock" style="margin-top:8px;">Este número puede diferir de "Ingresos" de arriba porque incluye abonos de ventas a crédito hechas en otro período, y no incluye el saldo pendiente de ventas a crédito de este período.</div>
+    </div>
+
+    <div class="card">
+      <h3>Desglose de gastos por tipo</h3>
+      <table>
+        <thead><tr><th>Tipo</th><th>Monto</th></tr></thead>
+        <tbody>
+          ${Object.keys(gastosPorTipo).length ? Object.entries(gastosPorTipo).map(([tipo, monto])=>`
+            <tr><td>${TIPOS_GASTO[tipo] || tipo}</td><td>${money(monto)}</td></tr>
+          `).join('') : `<tr><td colspan="2" class="empty">Sin gastos registrados en este período</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>Ventas del período (${(ventas||[]).length})</h3>
+      <table>
+        <thead><tr><th>Fecha</th><th>Modalidad</th><th>Total</th><th>Estado</th></tr></thead>
+        <tbody>
+          ${(ventas||[]).slice(0,30).map(v=>`
+            <tr>
+              <td>${fecha(v.created_at)}</td>
+              <td><span class="badge ${v.modalidad}">${MODALIDADES[v.modalidad]||v.modalidad}</span></td>
+              <td>${money(v.total)}</td>
+              <td><span class="badge ${v.estado}">${v.estado.replace('_',' ')}</span></td>
+            </tr>
+          `).join('') || `<tr><td colspan="4" class="empty">Sin ventas en este período</td></tr>`}
+        </tbody>
+      </table>
+      ${(ventas||[]).length > 30 ? `<div class="stock" style="margin-top:8px;">Mostrando las primeras 30 de ${ventas.length} ventas.</div>` : ''}
+    </div>
+  `;
+}
+
+/* =========================================================
+   CUENTAS POR COBRAR
+========================================================= */
+async function renderCobrar(){
+  const cont = document.getElementById('contenido-tab');
+  cont.innerHTML = `<div class="empty">Cargando...</div>`;
+
+  await cargarProductosYClientes();
+
+  const { data: cxc } = await sb.from('cuentas_por_cobrar')
+    .select('*, clientes(nombre_completo, telefono), ventas(modalidad)')
+    .eq('sede_id', ESTADO.sedeSeleccionada)
+    .neq('estado', 'pagada_completa')
+    .order('created_at', {ascending:false});
+
+  cont.innerHTML = `
+    <div class="card">
+      <h3>Cargar cuenta por cobrar existente (deuda anterior al sistema)</h3>
+      <div id="cxc-manual-msg"></div>
+      <div class="form-row buscador-resultados">
+        <label>Cliente</label>
+        <input type="text" id="cxc-buscar-cliente" placeholder="Buscar o escribir nombre nuevo..." oninput="buscarClienteInputCxc(this.value)" autocomplete="off">
+        <div class="buscador-lista" id="cxc-lista-clientes" style="display:none;"></div>
+      </div>
+      <input type="hidden" id="cxc-cliente-id-seleccionado">
+      <div class="form-row"><label>¿Qué compró? (descripción)</label><input type="text" id="cxc-descripcion" placeholder="Ej: Moto Toro 150, cuota inicial pendiente"></div>
+      <div class="inline-2">
+        <div class="form-row"><label>Monto total de la deuda</label><input type="number" id="cxc-monto-total" min="0" step="0.01" placeholder="0.00"></div>
+        <div class="form-row"><label>Saldo que aún debe</label><input type="number" id="cxc-saldo-pendiente" min="0" step="0.01" placeholder="0.00"></div>
+      </div>
+      <button class="btn" onclick="crearCuentaPorCobrarManual()">Cargar cuenta por cobrar</button>
+    </div>
+
+    <div class="card">
+      <h3>Cuentas por cobrar pendientes — ${sedeNombre(ESTADO.sedeSeleccionada)}</h3>
+      <table>
+        <thead><tr><th>Cliente</th><th>Descripción</th><th>Teléfono</th><th>Modalidad</th><th>Total</th><th>Saldo pendiente</th><th>Estado</th><th></th></tr></thead>
+        <tbody>
+          ${(cxc||[]).map(c=>`
+            <tr>
+              <td>${c.clientes?.nombre_completo||'—'}</td>
+              <td>${c.descripcion || (c.ventas ? 'Venta desde el panel' : '—')}</td>
+              <td>${c.clientes?.telefono||'—'}</td>
+              <td>${c.ventas ? `<span class="badge ${c.ventas.modalidad}">${MODALIDADES[c.ventas.modalidad]||'—'}</span>` : '—'}</td>
+              <td>${money(c.monto_total)}</td>
+              <td style="color:var(--rojo); font-weight:600;">${money(c.saldo_pendiente)}</td>
+              <td><span class="badge ${c.estado}">${c.estado.replace('_',' ')}</span></td>
+              <td><button class="btn chico" onclick="abrirModalAbono('${c.id}', ${c.saldo_pendiente})">Abonar</button></td>
+            </tr>
+          `).join('') || `<tr><td colspan="8" class="empty">No hay cuentas pendientes en esta sede 🎉</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function buscarClienteInputCxc(txt){
+  document.getElementById('cxc-cliente-id-seleccionado').value = '';
+  const lista = document.getElementById('cxc-lista-clientes');
+  if(!txt.trim()){ lista.style.display='none'; return; }
+  const t = txt.toLowerCase();
+  const results = ESTADO.clientes.filter(c => c.nombre_completo.toLowerCase().includes(t)).slice(0,8);
+  let html = results.map(c => `<div onclick="seleccionarClienteCxc('${c.id}','${c.nombre_completo.replace(/'/g,"\\'")}')">${c.nombre_completo}</div>`).join('');
+  html += `<div style="color:var(--rojo);" onclick="crearClienteRapidoCxc('${txt.replace(/'/g,"\\'")}')">+ Crear cliente nuevo: "${txt}"</div>`;
+  lista.innerHTML = html;
+  lista.style.display = 'block';
+}
+function seleccionarClienteCxc(id, nombre){
+  document.getElementById('cxc-cliente-id-seleccionado').value = id;
+  document.getElementById('cxc-buscar-cliente').value = nombre;
+  document.getElementById('cxc-lista-clientes').style.display = 'none';
+}
+async function crearClienteRapidoCxc(nombre){
+  if(!nombre.trim()) return;
+  const { data, error } = await sb.from('clientes').insert({ nombre_completo: nombre.trim() }).select().single();
+  if(error){ alert('Error creando cliente: ' + error.message); return; }
+  ESTADO.clientes.push(data);
+  seleccionarClienteCxc(data.id, data.nombre_completo);
+}
+
+async function crearCuentaPorCobrarManual(){
+  const msg = document.getElementById('cxc-manual-msg');
+  const clienteId = document.getElementById('cxc-cliente-id-seleccionado').value;
+  const descripcion = document.getElementById('cxc-descripcion').value.trim();
+  const montoTotal = parseFloat(document.getElementById('cxc-monto-total').value);
+  const saldoPendiente = parseFloat(document.getElementById('cxc-saldo-pendiente').value);
+
+  if(!clienteId){ msg.innerHTML = `<div class="msg err">Selecciona o crea un cliente.</div>`; return; }
+  if(!montoTotal || montoTotal <= 0){ msg.innerHTML = `<div class="msg err">Ingresa el monto total de la deuda.</div>`; return; }
+  if(isNaN(saldoPendiente) || saldoPendiente < 0 || saldoPendiente > montoTotal){ msg.innerHTML = `<div class="msg err">El saldo pendiente debe ser mayor o igual a 0 y menor o igual al total.</div>`; return; }
+
+  const estado = saldoPendiente <= 0 ? 'pagada_completa' : (saldoPendiente < montoTotal ? 'pagada_parcial' : 'pendiente');
+
+  const { error } = await sb.from('cuentas_por_cobrar').insert({
+    sede_id: ESTADO.sedeSeleccionada, cliente_id: clienteId, descripcion,
+    monto_total: montoTotal, saldo_pendiente: saldoPendiente, estado
+  });
+  if(error){ msg.innerHTML = `<div class="msg err">Error: ${error.message}</div>`; return; }
+
+  msg.innerHTML = `<div class="msg ok">Cuenta por cobrar cargada correctamente.</div>`;
+  renderCobrar();
+}
+
+function abrirModalAbono(cxcId, saldo){
+  document.getElementById('modal-contenido').innerHTML = `
+    <h3>Registrar abono</h3>
+    <div id="abono-modal-msg"></div>
+    <div class="form-row"><label>Saldo pendiente actual</label><input type="text" value="${money(saldo)}" disabled></div>
+    <div class="form-row"><label>Monto del abono</label><input type="number" id="monto-abono" min="0.01" max="${saldo}" step="0.01"></div>
+    <div class="form-row"><label>Nota (opcional)</label><input type="text" id="nota-abono"></div>
+    <div class="acciones">
+      <button class="btn secundario" onclick="cerrarModal()">Cancelar</button>
+      <button class="btn" onclick="confirmarAbono('${cxcId}', ${saldo})">Registrar abono</button>
+    </div>
+  `;
+  document.getElementById('modal-bg').classList.add('activo');
+}
+
+function cerrarModal(){ document.getElementById('modal-bg').classList.remove('activo'); }
+
+async function confirmarAbono(cxcId, saldoActual){
+  const msg = document.getElementById('abono-modal-msg');
+  const monto = parseFloat(document.getElementById('monto-abono').value);
+  const nota = document.getElementById('nota-abono').value.trim();
+  if(!monto || monto <= 0 || monto > saldoActual){
+    msg.innerHTML = `<div class="msg err">Monto inválido.</div>`; return;
+  }
+
+  await sb.from('abonos').insert({ cuenta_por_cobrar_id: cxcId, monto, nota, created_by: ESTADO.perfil.id });
+
+  const nuevoSaldo = saldoActual - monto;
+  const nuevoEstado = nuevoSaldo <= 0 ? 'pagada_completa' : 'pagada_parcial';
+  const { data: cxcActualizada } = await sb.from('cuentas_por_cobrar')
+    .update({ saldo_pendiente: nuevoSaldo, estado: nuevoEstado }).eq('id', cxcId).select().single();
+
+  if(cxcActualizada?.venta_id){
+    const { data: venta } = await sb.from('ventas').select('*').eq('id', cxcActualizada.venta_id).single();
+    if(venta){
+      await sb.from('ventas').update({
+        monto_pagado: Number(venta.monto_pagado) + monto, estado: nuevoEstado
+      }).eq('id', venta.id);
+    }
+  }
+
+  const { data: caja } = await sb.from('cajas').select('*').eq('sede_id', ESTADO.sedeSeleccionada).single();
+  if(caja){
+    await sb.from('movimientos_caja').insert({
+      caja_id: caja.id, sede_id: ESTADO.sedeSeleccionada, tipo: 'ingreso_abono', monto,
+      descripcion: nota || 'Abono a cuenta por cobrar', referencia_id: cxcId, created_by: ESTADO.perfil.id
+    });
+    await sb.from('cajas').update({ saldo_actual: Number(caja.saldo_actual) + monto }).eq('id', caja.id);
+  }
+
+  cerrarModal();
+  renderCobrar();
+}
+
+/* =========================================================
+   CUENTAS POR PAGAR
+========================================================= */
+async function renderPagar(){
+  const cont = document.getElementById('contenido-tab');
+  cont.innerHTML = `<div class="empty">Cargando...</div>`;
+
+  const { data: proveedores } = await sb.from('proveedores').select('*').order('nombre');
+  ESTADO.proveedores = proveedores || [];
+
+  const { data: cxp } = await sb.from('cuentas_por_pagar')
+    .select('*, proveedores(nombre, telefono)')
+    .eq('sede_id', ESTADO.sedeSeleccionada)
+    .neq('estado', 'pagada_completa')
+    .order('created_at', {ascending:false});
+
+  cont.innerHTML = `
+    <div class="card">
+      <h3>Cargar cuenta por pagar existente (deuda anterior al sistema)</h3>
+      <div id="cxp-manual-msg"></div>
+      <div class="form-row buscador-resultados">
+        <label>Proveedor</label>
+        <input type="text" id="cxp-buscar-proveedor" placeholder="Buscar o escribir nombre nuevo..." oninput="buscarProveedorInputCxp(this.value)" autocomplete="off">
+        <div class="buscador-lista" id="cxp-lista-proveedores" style="display:none;"></div>
+      </div>
+      <input type="hidden" id="cxp-proveedor-id-seleccionado">
+      <div class="form-row"><label>¿Qué se compró? (descripción)</label><input type="text" id="cxp-descripcion" placeholder="Ej: Lote de repuestos, factura #123"></div>
+      <div class="inline-2">
+        <div class="form-row"><label>Monto total de la deuda</label><input type="number" id="cxp-monto-total" min="0" step="0.01" placeholder="0.00"></div>
+        <div class="form-row"><label>Saldo que aún se debe</label><input type="number" id="cxp-saldo-pendiente" min="0" step="0.01" placeholder="0.00"></div>
+      </div>
+      <button class="btn" onclick="crearCuentaPorPagarManual()">Cargar cuenta por pagar</button>
+    </div>
+
+    <div class="card">
+      <h3>Cuentas por pagar pendientes — ${sedeNombre(ESTADO.sedeSeleccionada)}</h3>
+      <table>
+        <thead><tr><th>Proveedor</th><th>Descripción</th><th>Teléfono</th><th>Total</th><th>Saldo pendiente</th><th>Estado</th><th></th></tr></thead>
+        <tbody>
+          ${(cxp||[]).map(c=>`
+            <tr>
+              <td>${c.proveedores?.nombre||'—'}</td>
+              <td>${c.descripcion || '—'}</td>
+              <td>${c.proveedores?.telefono||'—'}</td>
+              <td>${money(c.monto_total)}</td>
+              <td style="color:var(--rojo); font-weight:600;">${money(c.saldo_pendiente)}</td>
+              <td><span class="badge ${c.estado}">${c.estado.replace('_',' ')}</span></td>
+              <td><button class="btn chico" onclick="abrirModalAbonoPagar('${c.id}', ${c.saldo_pendiente})">Abonar</button></td>
+            </tr>
+          `).join('') || `<tr><td colspan="7" class="empty">No hay cuentas por pagar pendientes en esta sede 🎉</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function buscarProveedorInputCxp(txt){
+  document.getElementById('cxp-proveedor-id-seleccionado').value = '';
+  const lista = document.getElementById('cxp-lista-proveedores');
+  if(!txt.trim()){ lista.style.display='none'; return; }
+  const t = txt.toLowerCase();
+  const results = (ESTADO.proveedores||[]).filter(p => p.nombre.toLowerCase().includes(t)).slice(0,8);
+  let html = results.map(p => `<div onclick="seleccionarProveedorCxp('${p.id}','${p.nombre.replace(/'/g,"\\'")}')">${p.nombre}</div>`).join('');
+  html += `<div style="color:var(--rojo);" onclick="crearProveedorRapidoCxp('${txt.replace(/'/g,"\\'")}')">+ Crear proveedor nuevo: "${txt}"</div>`;
+  lista.innerHTML = html;
+  lista.style.display = 'block';
+}
+function seleccionarProveedorCxp(id, nombre){
+  document.getElementById('cxp-proveedor-id-seleccionado').value = id;
+  document.getElementById('cxp-buscar-proveedor').value = nombre;
+  document.getElementById('cxp-lista-proveedores').style.display = 'none';
+}
+async function crearProveedorRapidoCxp(nombre){
+  if(!nombre.trim()) return;
+  const { data, error } = await sb.from('proveedores').insert({ nombre: nombre.trim() }).select().single();
+  if(error){ alert('Error creando proveedor: ' + error.message); return; }
+  ESTADO.proveedores.push(data);
+  seleccionarProveedorCxp(data.id, data.nombre);
+}
+
+async function crearCuentaPorPagarManual(){
+  const msg = document.getElementById('cxp-manual-msg');
+  const proveedorId = document.getElementById('cxp-proveedor-id-seleccionado').value;
+  const descripcion = document.getElementById('cxp-descripcion').value.trim();
+  const montoTotal = parseFloat(document.getElementById('cxp-monto-total').value);
+  const saldoPendiente = parseFloat(document.getElementById('cxp-saldo-pendiente').value);
+
+  if(!proveedorId){ msg.innerHTML = `<div class="msg err">Selecciona o crea un proveedor.</div>`; return; }
+  if(!montoTotal || montoTotal <= 0){ msg.innerHTML = `<div class="msg err">Ingresa el monto total de la deuda.</div>`; return; }
+  if(isNaN(saldoPendiente) || saldoPendiente < 0 || saldoPendiente > montoTotal){ msg.innerHTML = `<div class="msg err">El saldo pendiente debe ser mayor o igual a 0 y menor o igual al total.</div>`; return; }
+
+  const estado = saldoPendiente <= 0 ? 'pagada_completa' : (saldoPendiente < montoTotal ? 'pagada_parcial' : 'pendiente');
+
+  const { error } = await sb.from('cuentas_por_pagar').insert({
+    sede_id: ESTADO.sedeSeleccionada, proveedor_id: proveedorId, descripcion,
+    monto_total: montoTotal, saldo_pendiente: saldoPendiente, estado
+  });
+  if(error){ msg.innerHTML = `<div class="msg err">Error: ${error.message}</div>`; return; }
+
+  msg.innerHTML = `<div class="msg ok">Cuenta por pagar cargada correctamente.</div>`;
+  renderPagar();
+}
+
+function abrirModalAbonoPagar(cxpId, saldo){
+  document.getElementById('modal-contenido').innerHTML = `
+    <h3>Registrar abono a proveedor</h3>
+    <div id="abono-pagar-modal-msg"></div>
+    <div class="form-row"><label>Saldo pendiente actual</label><input type="text" value="${money(saldo)}" disabled></div>
+    <div class="form-row"><label>Monto del abono</label><input type="number" id="monto-abono-pagar" min="0.01" max="${saldo}" step="0.01"></div>
+    <div class="form-row"><label>Nota (opcional)</label><input type="text" id="nota-abono-pagar"></div>
+    <div class="acciones">
+      <button class="btn secundario" onclick="cerrarModal()">Cancelar</button>
+      <button class="btn" onclick="confirmarAbonoPagar('${cxpId}', ${saldo})">Registrar abono</button>
+    </div>
+  `;
+  document.getElementById('modal-bg').classList.add('activo');
+}
+
+async function confirmarAbonoPagar(cxpId, saldoActual){
+  const msg = document.getElementById('abono-pagar-modal-msg');
+  const monto = parseFloat(document.getElementById('monto-abono-pagar').value);
+  const nota = document.getElementById('nota-abono-pagar').value.trim();
+  if(!monto || monto <= 0 || monto > saldoActual){
+    msg.innerHTML = `<div class="msg err">Monto inválido.</div>`; return;
+  }
+
+  await sb.from('abonos_por_pagar').insert({ cuenta_por_pagar_id: cxpId, monto, nota, created_by: ESTADO.perfil.id });
+
+  const nuevoSaldo = saldoActual - monto;
+  const nuevoEstado = nuevoSaldo <= 0 ? 'pagada_completa' : 'pagada_parcial';
+  const { data: cxpActualizada } = await sb.from('cuentas_por_pagar')
+    .update({ saldo_pendiente: nuevoSaldo, estado: nuevoEstado }).eq('id', cxpId).select().single();
+
+  if(cxpActualizada?.compra_id){
+    const { data: compra } = await sb.from('compras').select('*').eq('id', cxpActualizada.compra_id).single();
+    if(compra){
+      await sb.from('compras').update({
+        monto_pagado: Number(compra.monto_pagado) + monto, estado: nuevoEstado
+      }).eq('id', compra.id);
+    }
+  }
+
+  const { data: caja } = await sb.from('cajas').select('*').eq('sede_id', ESTADO.sedeSeleccionada).single();
+  if(caja){
+    await sb.from('movimientos_caja').insert({
+      caja_id: caja.id, sede_id: ESTADO.sedeSeleccionada, tipo: 'egreso_compra', monto,
+      descripcion: nota || 'Abono a cuenta por pagar', referencia_id: cxpId, created_by: ESTADO.perfil.id
+    });
+    await sb.from('cajas').update({ saldo_actual: Number(caja.saldo_actual) - monto }).eq('id', caja.id);
+  }
+
+  cerrarModal();
+  renderPagar();
+}
+
+/* =========================================================
+   INVENTARIO
+========================================================= */
+async function renderInventario(){
+  const cont = document.getElementById('contenido-tab');
+  cont.innerHTML = `<div class="empty">Cargando...</div>`;
+
+  const { data: productos } = await sb.from('productos').select('*').eq('activo', true).order('nombre');
+  const { data: inv } = await sb.from('inventario').select('*').eq('sede_id', ESTADO.sedeSeleccionada);
+  const invMap = {};
+  (inv||[]).forEach(r => invMap[r.producto_id] = r.cantidad);
+
+  cont.innerHTML = `
+    <div class="card">
+      <h3>Inventario — ${sedeNombre(ESTADO.sedeSeleccionada)}</h3>
+      <table>
+        <thead><tr><th>Producto</th><th>Precio de venta</th><th>Costo</th><th>Stock en esta sede</th><th></th></tr></thead>
+        <tbody>
+          ${(productos||[]).map(p=>`
+            <tr>
+              <td>${p.nombre}</td>
+              <td><input type="number" min="0" step="0.01" id="precio-${p.id}" value="${p.precio}" style="width:90px; padding:6px; background:var(--negro3); border:1px solid var(--borde); border-radius:6px; color:#fff;"></td>
+              <td><input type="number" min="0" step="0.01" id="costo-${p.id}" value="${p.costo||0}" style="width:90px; padding:6px; background:var(--negro3); border:1px solid var(--borde); border-radius:6px; color:#fff;"></td>
+              <td>${invMap[p.id] ?? 0} — <input type="number" id="ajuste-${p.id}" style="width:70px; padding:6px; background:var(--negro3); border:1px solid var(--borde); border-radius:6px; color:#fff;" placeholder="Nueva cant."></td>
+              <td><button class="btn chico" onclick="guardarFilaInventario('${p.id}')">Guardar</button></td>
+            </tr>
+          `).join('') || `<tr><td colspan="5" class="empty">No hay productos creados aún. Ve a la pestaña Productos.</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+async function guardarFilaInventario(productoId){
+  const nuevoPrecio = parseFloat(document.getElementById('precio-'+productoId).value);
+  const nuevoCosto = parseFloat(document.getElementById('costo-'+productoId).value);
+  const inputCantidad = document.getElementById('ajuste-'+productoId).value;
+
+  if(!isNaN(nuevoPrecio) || !isNaN(nuevoCosto)){
+    const cambios = {};
+    if(!isNaN(nuevoPrecio)) cambios.precio = nuevoPrecio;
+    if(!isNaN(nuevoCosto)) cambios.costo = nuevoCosto;
+    await sb.from('productos').update(cambios).eq('id', productoId);
+  }
+
+  if(inputCantidad !== ''){
+    const nuevaCantidad = parseFloat(inputCantidad);
+    if(!isNaN(nuevaCantidad) && nuevaCantidad >= 0){
+      const { data: existente } = await sb.from('inventario').select('*')
+        .eq('sede_id', ESTADO.sedeSeleccionada).eq('producto_id', productoId).maybeSingle();
+      if(existente){
+        await sb.from('inventario').update({ cantidad: nuevaCantidad, updated_at: new Date().toISOString() }).eq('id', existente.id);
+      } else {
+        await sb.from('inventario').insert({ sede_id: ESTADO.sedeSeleccionada, producto_id: productoId, cantidad: nuevaCantidad });
+      }
+      await sb.from('movimientos_inventario').insert({
+        sede_id: ESTADO.sedeSeleccionada, producto_id: productoId, tipo: 'ajuste',
+        cantidad: nuevaCantidad, created_by: ESTADO.perfil.id
+      });
+    }
+  }
+
+  renderInventario();
+}
+
+/* =========================================================
+   PRODUCTOS
+========================================================= */
+async function renderProductos(){
+  const cont = document.getElementById('contenido-tab');
+  cont.innerHTML = `<div class="empty">Cargando...</div>`;
+
+  const { data: categorias } = await sb.from('categorias').select('*').order('nombre');
+  const { data: productos } = await sb.from('productos').select('*, categorias(nombre)').order('nombre');
+  const { data: config } = await sb.from('tienda_config').select('*').single();
+
+  cont.innerHTML = `
+    <div class="card">
+      <h3>Logo de la tienda</h3>
+      <div id="logo-msg"></div>
+      <div style="display:flex; align-items:center; gap:20px;">
+        ${config?.logo_url ? `<img src="${config.logo_url}" style="height:60px; background:#000; border-radius:8px; padding:6px;">` : `<div class="stock">Aún no has subido el logo</div>`}
+        <div>
+          <input type="file" id="logo-file" accept="image/*" onchange="subirLogoTienda(this)">
+          <div class="stock">Se usará en la portada de la tienda pública.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <h3>Nuevo producto</h3>
+        <div id="producto-msg"></div>
+        <div class="form-row"><label>Nombre</label><input type="text" id="np-nombre" placeholder="Ej: Casco integral negro"></div>
+        <div class="inline-2">
+          <div class="form-row">
+            <label>Categoría</label>
+            <select id="np-categoria">
+              <option value="">Sin categoría</option>
+              ${(categorias||[]).map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-row"><label>Precio</label><input type="number" id="np-precio" min="0" step="0.01" placeholder="0.00"></div>
+        </div>
+        <div class="form-row"><label>SKU / código de barras / código del proveedor (opcional)</label><input type="text" id="np-sku" placeholder="Usa el mismo código que tu proveedor para que Compras lo empareje exacto"></div>
+        <div class="form-row"><label>Etiquetas (opcional, separadas por coma — ej: Automática, Alta cilindrada)</label><input type="text" id="np-etiquetas" placeholder="Automática, Sincrónica, Alta cilindrada..."></div>
+
+        <button class="btn" onclick="crearProducto()">Crear producto</button>
+        <div class="stock" style="margin-top:8px;">Después de crear el producto, dale "Editar" en la tabla para subirle fotos.</div>
+
+        <h3 style="margin-top:26px;">Nueva categoría</h3>
+        <div class="inline-3" style="grid-template-columns:1fr auto;">
+          <input type="text" id="nc-nombre" placeholder="Ej: Repuestos">
+          <button class="btn secundario chico" onclick="crearCategoria()">Agregar</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Catálogo (${(productos||[]).length})</h3>
+        <table>
+          <thead><tr><th>Nombre</th><th>Categoría</th><th>Precio</th><th></th></tr></thead>
+          <tbody>
+            ${(productos||[]).map(p=>`
+              <tr><td>${p.nombre}</td><td>${p.categorias?.nombre||'—'}</td><td>${money(p.precio)}</td><td><button class="btn chico secundario" onclick="abrirEditarProducto('${p.id}')">✏️ Editar</button></td></tr>
+            `).join('') || `<tr><td colspan="4" class="empty">Sin productos aún</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="editar-producto-panel"></div>
+  `;
+}
+
+async function subirLogoTienda(input){
+  const file = input.files[0];
+  if(!file) return;
+  const msg = document.getElementById('logo-msg');
+  msg.innerHTML = `<div class="msg ok">Subiendo logo...</div>`;
+  try{
+    const url = await subirFoto(file, 'logo');
+    await sb.from('tienda_config').update({ logo_url: url }).eq('id', true);
+    renderProductos();
+  } catch(err){
+    msg.innerHTML = `<div class="msg err">Error subiendo el logo: ${err.message}</div>`;
+  }
+}
+
+/* Sube un archivo al bucket de fotos y devuelve la URL pública */
+async function subirFoto(file, carpeta){
+  const nombreLimpio = file.name.replace(/[^a-zA-Z0-9.]/g, '_');
+  const path = `${carpeta}/${Date.now()}-${nombreLimpio}`;
+  const { error } = await sb.storage.from('motostoro-fotos').upload(path, file);
+  if(error) throw error;
+  const { data } = sb.storage.from('motostoro-fotos').getPublicUrl(path);
+  return data.publicUrl;
+}
+
+async function crearCategoria(){
+  const nombre = document.getElementById('nc-nombre').value.trim();
+  if(!nombre) return;
+  const { error } = await sb.from('categorias').insert({ nombre });
+  if(error){ alert('Error: ' + error.message); return; }
+  renderProductos();
+}
+
+async function crearProducto(){
+  const msg = document.getElementById('producto-msg');
+  const nombre = document.getElementById('np-nombre').value.trim();
+  const categoria_id = document.getElementById('np-categoria').value || null;
+  const precio = parseFloat(document.getElementById('np-precio').value) || 0;
+  const sku = document.getElementById('np-sku').value.trim() || null;
+  const etiquetas = document.getElementById('np-etiquetas').value.split(',').map(t=>t.trim()).filter(Boolean);
+
+  if(!nombre){ msg.innerHTML = `<div class="msg err">El nombre es obligatorio.</div>`; return; }
+
+  const { error } = await sb.from('productos').insert({ nombre, categoria_id, precio, sku, etiquetas });
+  if(error){ msg.innerHTML = `<div class="msg err">Error: ${error.message}</div>`; return; }
+  msg.innerHTML = `<div class="msg ok">Producto creado. Dale "Editar" en la tabla para subirle fotos y ajustar el stock desde Inventario.</div>`;
+  renderProductos();
+}
+
+/* ---------- Editar producto: datos, foto principal, galería, colores ---------- */
+async function abrirEditarProducto(productoId){
+  const panel = document.getElementById('editar-producto-panel');
+  panel.innerHTML = `<div class="empty">Cargando...</div>`;
+  panel.scrollIntoView({ behavior:'smooth', block:'start' });
+
+  const { data: producto } = await sb.from('productos').select('*, categorias(id, nombre)').eq('id', productoId).single();
+  const { data: categorias } = await sb.from('categorias').select('*').order('nombre');
+  const { data: fotos } = await sb.from('producto_fotos').select('*').eq('producto_id', productoId).order('orden');
+  const { data: colores } = await sb.from('producto_colores').select('*').eq('producto_id', productoId).order('orden');
+
+  panel.innerHTML = `
+    <div class="card">
+      <h3>Editar "${producto.nombre}"</h3>
+      <div id="editar-msg"></div>
+
+      <div class="form-row"><label>Nombre</label><input type="text" id="ep-nombre" value="${producto.nombre}"></div>
+      <div class="inline-2">
+        <div class="form-row">
+          <label>Categoría</label>
+          <select id="ep-categoria">
+            <option value="">Sin categoría</option>
+            ${(categorias||[]).map(c=>`<option value="${c.id}" ${c.id===producto.categoria_id?'selected':''}>${c.nombre}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-row"><label>Precio</label><input type="number" id="ep-precio" min="0" step="0.01" value="${producto.precio}"></div>
+      </div>
+      <div class="form-row"><label>SKU / código</label><input type="text" id="ep-sku" value="${producto.sku||''}"></div>
+      <div class="form-row"><label>Descripción</label><input type="text" id="ep-descripcion" value="${(producto.descripcion||'').replace(/"/g,'&quot;')}"></div>
+      <div class="form-row"><label>Etiquetas (separadas por coma)</label><input type="text" id="ep-etiquetas" value="${(producto.etiquetas||[]).join(', ')}" placeholder="Automática, Sincrónica, Alta cilindrada..."></div>
+      <button class="btn" onclick="guardarEdicionProducto('${productoId}')">Guardar cambios</button>
+
+      <h3 style="margin-top:26px;">Foto principal</h3>
+      <div id="ep-foto-principal-preview">
+        ${producto.imagen_url ? `<img src="${producto.imagen_url}" style="width:140px; height:110px; object-fit:cover; border-radius:8px; margin-bottom:10px;">` : `<div class="stock" style="margin-bottom:10px;">Sin foto principal</div>`}
+      </div>
+      <input type="file" id="ep-foto-principal-file" accept="image/*" onchange="subirFotoPrincipal(this, '${productoId}')">
+
+      <h3 style="margin-top:26px;">Galería de fotos adicionales</h3>
+      <div class="stock" style="margin-bottom:10px;">Estas se muestran como miniaturas debajo de la foto en la tienda pública.</div>
+      <div id="ep-galeria" style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px;">
+        ${(fotos||[]).map(f=>`
+          <div style="position:relative;">
+            <img src="${f.imagen_url}" style="width:80px; height:64px; object-fit:cover; border-radius:6px;">
+            <span onclick="eliminarFotoGaleria('${f.id}', '${productoId}')" style="position:absolute; top:-6px; right:-6px; background:var(--rojo); color:#fff; border-radius:50%; width:20px; height:20px; display:flex; align-items:center; justify-content:center; font-size:11px; cursor:pointer;">✕</span>
+          </div>
+        `).join('') || `<div class="stock">Sin fotos adicionales</div>`}
+      </div>
+      <input type="file" id="ep-galeria-file" accept="image/*" multiple onchange="subirFotosGaleria(this, '${productoId}')">
+
+      <h3 style="margin-top:26px;">Colores (opcional — solo si este producto viene en distintos colores)</h3>
+      <div id="ep-colores"></div>
+    </div>
+  `;
+
+  renderColoresEnEdicion(productoId, colores||[]);
+}
+
+async function guardarEdicionProducto(productoId){
+  const msg = document.getElementById('editar-msg');
+  const nombre = document.getElementById('ep-nombre').value.trim();
+  const categoria_id = document.getElementById('ep-categoria').value || null;
+  const precio = parseFloat(document.getElementById('ep-precio').value) || 0;
+  const sku = document.getElementById('ep-sku').value.trim() || null;
+  const descripcion = document.getElementById('ep-descripcion').value.trim() || null;
+  const etiquetas = document.getElementById('ep-etiquetas').value.split(',').map(t=>t.trim()).filter(Boolean);
+
+  if(!nombre){ msg.innerHTML = `<div class="msg err">El nombre es obligatorio.</div>`; return; }
+
+  const { error } = await sb.from('productos').update({ nombre, categoria_id, precio, sku, descripcion, etiquetas }).eq('id', productoId);
+  if(error){ msg.innerHTML = `<div class="msg err">Error: ${error.message}</div>`; return; }
+  msg.innerHTML = `<div class="msg ok">Cambios guardados.</div>`;
+  renderProductos();
+}
+
+async function subirFotoPrincipal(input, productoId){
+  const file = input.files[0];
+  if(!file) return;
+  const msg = document.getElementById('editar-msg');
+  msg.innerHTML = `<div class="msg ok">Subiendo foto...</div>`;
+  try{
+    const url = await subirFoto(file, 'productos');
+    await sb.from('productos').update({ imagen_url: url }).eq('id', productoId);
+    abrirEditarProducto(productoId);
+  } catch(err){
+    msg.innerHTML = `<div class="msg err">Error subiendo la foto: ${err.message}</div>`;
+  }
+}
+
+async function subirFotosGaleria(input, productoId){
+  const files = Array.from(input.files || []);
+  if(!files.length) return;
+  const msg = document.getElementById('editar-msg');
+  msg.innerHTML = `<div class="msg ok">Subiendo ${files.length} foto(s)...</div>`;
+  try{
+    for(const file of files){
+      const url = await subirFoto(file, 'productos');
+      await sb.from('producto_fotos').insert({ producto_id: productoId, imagen_url: url });
+    }
+    abrirEditarProducto(productoId);
+  } catch(err){
+    msg.innerHTML = `<div class="msg err">Error subiendo fotos: ${err.message}</div>`;
+  }
+}
+
+async function eliminarFotoGaleria(fotoId, productoId){
+  await sb.from('producto_fotos').delete().eq('id', fotoId);
+  abrirEditarProducto(productoId);
+}
+
+/* ---------- Colores (dentro del panel de edición) ---------- */
+function renderColoresEnEdicion(productoId, colores){
+  const wrap = document.getElementById('ep-colores');
+  wrap.innerHTML = `
+    <div id="color-msg"></div>
+    <div class="inline-3" style="grid-template-columns:1fr 90px 1fr auto;">
+      <div class="form-row" style="margin-bottom:0;"><label>Nombre del color</label><input type="text" id="pc-nombre" placeholder="Ej: Rojo, Negro mate"></div>
+      <div class="form-row" style="margin-bottom:0;"><label>Muestra</label><input type="color" id="pc-hex" value="#888888" style="height:42px; padding:4px;"></div>
+      <div class="form-row" style="margin-bottom:0;"><label>Foto en este color</label><input type="file" id="pc-imagen-file" accept="image/*"></div>
+      <button class="btn chico" onclick="agregarColorProducto('${productoId}')">+ Agregar</button>
+    </div>
+
+    <table style="margin-top:14px;">
+      <thead><tr><th>Color</th><th>Muestra</th><th>Foto</th><th>Disponible</th><th></th></tr></thead>
+      <tbody>
+        ${colores.map(c=>`
+          <tr>
+            <td>${c.nombre_color}</td>
+            <td><span style="display:inline-block; width:22px; height:22px; border-radius:50%; background:${c.hex_color}; border:1px solid var(--borde); vertical-align:middle;"></span></td>
+            <td>${c.imagen_url ? `<img src="${c.imagen_url}" style="width:44px; height:34px; object-fit:cover; border-radius:4px;">` : '—'}</td>
+            <td><input type="checkbox" ${c.disponible ? 'checked' : ''} onchange="toggleDisponibleColor('${c.id}', this.checked, '${productoId}')"></td>
+            <td><span class="quitar" onclick="eliminarColorProducto('${c.id}', '${productoId}')">Quitar ✕</span></td>
+          </tr>
+        `).join('') || `<tr><td colspan="5" class="empty">Sin colores cargados — este producto se mostrará sin selector de color en la tienda</td></tr>`}
+      </tbody>
+    </table>
+  `;
+}
+
+async function agregarColorProducto(productoId){
+  const msg = document.getElementById('color-msg');
+  const nombre_color = document.getElementById('pc-nombre').value.trim();
+  const hex_color = document.getElementById('pc-hex').value;
+  const file = document.getElementById('pc-imagen-file').files[0];
+
+  if(!nombre_color){ msg.innerHTML = `<div class="msg err">Ponle un nombre al color.</div>`; return; }
+
+  let imagen_url = null;
+  if(file){
+    msg.innerHTML = `<div class="msg ok">Subiendo foto...</div>`;
+    try{ imagen_url = await subirFoto(file, 'colores'); }
+    catch(err){ msg.innerHTML = `<div class="msg err">Error subiendo la foto: ${err.message}</div>`; return; }
+  }
+
+  const { error } = await sb.from('producto_colores').insert({ producto_id: productoId, nombre_color, hex_color, imagen_url });
+  if(error){ msg.innerHTML = `<div class="msg err">Error: ${error.message}</div>`; return; }
+
+  abrirEditarProducto(productoId);
+}
+
+async function toggleDisponibleColor(colorId, disponible, productoId){
+  await sb.from('producto_colores').update({ disponible }).eq('id', colorId);
+  abrirEditarProducto(productoId);
+}
+
+async function eliminarColorProducto(colorId, productoId){
+  await sb.from('producto_colores').delete().eq('id', colorId);
+  abrirEditarProducto(productoId);
+}
+/* =========================================================
+   CLIENTES
+========================================================= */
+async function renderClientes(){
+  const cont = document.getElementById('contenido-tab');
+  cont.innerHTML = `<div class="empty">Cargando...</div>`;
+
+  const { data: clientes } = await sb.from('clientes').select('*').order('nombre_completo');
+
+  cont.innerHTML = `
+    <div class="grid2">
+      <div class="card">
+        <h3>Nuevo cliente</h3>
+        <div id="cliente-msg"></div>
+        <div class="form-row"><label>Nombre completo</label><input type="text" id="ncl-nombre"></div>
+        <div class="inline-2">
+          <div class="form-row"><label>Cédula</label><input type="text" id="ncl-cedula"></div>
+          <div class="form-row"><label>Teléfono</label><input type="text" id="ncl-telefono"></div>
+        </div>
+        <div class="form-row"><label>Dirección</label><input type="text" id="ncl-direccion"></div>
+        <button class="btn" onclick="crearCliente()">Crear cliente</button>
+      </div>
+      <div class="card">
+        <h3>Clientes (${(clientes||[]).length})</h3>
+        <table>
+          <thead><tr><th>Nombre</th><th>Cédula</th><th>Teléfono</th></tr></thead>
+          <tbody>
+            ${(clientes||[]).map(c=>`<tr><td>${c.nombre_completo}</td><td>${c.cedula||'—'}</td><td>${c.telefono||'—'}</td></tr>`).join('') || `<tr><td colspan="3" class="empty">Sin clientes aún</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+async function crearCliente(){
+  const msg = document.getElementById('cliente-msg');
+  const nombre_completo = document.getElementById('ncl-nombre').value.trim();
+  const cedula = document.getElementById('ncl-cedula').value.trim() || null;
+  const telefono = document.getElementById('ncl-telefono').value.trim() || null;
+  const direccion = document.getElementById('ncl-direccion').value.trim() || null;
+
+  if(!nombre_completo){ msg.innerHTML = `<div class="msg err">El nombre es obligatorio.</div>`; return; }
+
+  const { error } = await sb.from('clientes').insert({ nombre_completo, cedula, telefono, direccion });
+  if(error){ msg.innerHTML = `<div class="msg err">Error: ${error.message}</div>`; return; }
+  msg.innerHTML = `<div class="msg ok">Cliente creado.</div>`;
+  renderClientes();
+}
+
+/* =========================================================
+   CONTENIDO DE LA TIENDA (textos editables)
+========================================================= */
+const CAMPOS_CONTENIDO = [
+  { grupo: 'Portada (Hero)', campos: [
+    { clave: 'hero_titulo_1', label: 'Título — primera palabra', tipo: 'input' },
+    { clave: 'hero_titulo_2', label: 'Título — palabra resaltada en rojo', tipo: 'input' },
+    { clave: 'hero_titulo_3', label: 'Título — segunda línea', tipo: 'input' },
+    { clave: 'hero_subtitulo', label: 'Subtítulo (párrafo debajo del título)', tipo: 'textarea' },
+    { clave: 'boton_catalogo', label: 'Texto del botón "Ver catálogo"', tipo: 'input' },
+    { clave: 'boton_whatsapp', label: 'Texto del botón de WhatsApp', tipo: 'input' },
+  ]},
+  { grupo: 'Sección "Quiénes somos"', campos: [
+    { clave: 'franja_titulo', label: 'Título de la sección', tipo: 'input' },
+    { clave: 'franja_texto1', label: 'Primer párrafo', tipo: 'textarea' },
+    { clave: 'franja_texto2', label: 'Segundo párrafo', tipo: 'textarea' },
+  ]},
+  { grupo: 'Pie de página', campos: [
+    { clave: 'footer_descripcion', label: 'Descripción bajo el logo', tipo: 'textarea' },
+    { clave: 'footer_bottom', label: 'Línea final (junto al copyright)', tipo: 'input' },
+  ]}
+];
+
+async function renderContenidoTienda(){
+  const cont = document.getElementById('contenido-tab');
+  cont.innerHTML = `<div class="empty">Cargando...</div>`;
+
+  const { data: filas } = await sb.from('contenido_tienda').select('*');
+  const valores = {};
+  (filas||[]).forEach(f => valores[f.clave] = f.valor);
+
+  const { data: sedes } = await sb.from('sedes').select('*').eq('activa', true).order('nombre');
+
+  cont.innerHTML = `
+    <div id="contenido-msg"></div>
+
+    <div class="card">
+      <h3>Direcciones de las sedes</h3>
+      <div class="stock" style="margin-bottom:12px;">Se muestran en la portada y el pie de página de la tienda pública.</div>
+      ${(sedes||[]).map(s => `
+        <div class="form-row">
+          <label>${s.nombre}</label>
+          <input type="text" id="sede-dir-${s.id}" value="${(s.ubicacion||'').replace(/"/g,'&quot;')}" placeholder="Ej: Av. Principal, frente a la plaza, La Fría, Táchira">
+        </div>
+      `).join('')}
+      <button class="btn secundario chico" onclick="guardarDireccionesSedes()">Guardar direcciones</button>
+    </div>
+
+    ${CAMPOS_CONTENIDO.map(grupo => `
+      <div class="card">
+        <h3>${grupo.grupo}</h3>
+        ${grupo.campos.map(c => `
+          <div class="form-row">
+            <label>${c.label}</label>
+            ${c.tipo === 'textarea'
+              ? `<textarea id="ct-${c.clave}" rows="3" style="width:100%; padding:10px 12px; background:var(--negro3); border:1px solid var(--borde); border-radius:8px; color:var(--blanco); font-size:14px; font-family:inherit;">${valores[c.clave]||''}</textarea>`
+              : `<input type="text" id="ct-${c.clave}" value="${(valores[c.clave]||'').replace(/"/g,'&quot;')}">`}
+          </div>
+        `).join('')}
+      </div>
+    `).join('')}
+    <button class="btn" onclick="guardarContenidoTienda()">Guardar todos los cambios</button>
+  `;
+}
+
+async function guardarDireccionesSedes(){
+  const msg = document.getElementById('contenido-msg');
+  for(const sede of ESTADO.sedes){
+    const input = document.getElementById('sede-dir-'+sede.id);
+    if(!input) continue;
+    await sb.from('sedes').update({ ubicacion: input.value.trim() || null }).eq('id', sede.id);
+  }
+  msg.innerHTML = `<div class="msg ok">Direcciones actualizadas.</div>`;
+}
+
+async function guardarContenidoTienda(){
+  const msg = document.getElementById('contenido-msg');
+  const filas = CAMPOS_CONTENIDO.flatMap(g => g.campos).map(c => ({
+    clave: c.clave, valor: document.getElementById('ct-'+c.clave).value
+  }));
+
+  const { error } = await sb.from('contenido_tienda').upsert(filas, { onConflict: 'clave' });
+  if(error){ msg.innerHTML = `<div class="msg err">Error: ${error.message}</div>`; return; }
+  msg.innerHTML = `<div class="msg ok">Textos actualizados. Los cambios ya se ven en la tienda pública, sin necesidad de subir nada a Netlify.</div>`;
+}
+
+/* =========================================================
+   INICIO
+========================================================= */
+document.getElementById('login-pass').addEventListener('keydown', e => { if(e.key === 'Enter') hacerLogin(); });
+cargarSesion();
+</script>
+</body>
+</html>
