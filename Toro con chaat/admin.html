@@ -793,7 +793,6 @@ async function renderMotosan(){
 
   const { data: grupos } = await sb.from('motosan_grupos')
     .select('*')
-    .eq('sede_id', ESTADO.sedeSeleccionada)
     .order('created_at', {ascending:false});
 
   cont.innerHTML = `
@@ -803,12 +802,12 @@ async function renderMotosan(){
         <div id="motosan-grupo-msg"></div>
         <div class="form-row"><label>Nombre del grupo</label><input type="text" id="mg-nombre" placeholder="Ej: Motosán Julio 2026"></div>
         <div class="form-row"><label>Cantidad total de semanas (igual para todos los participantes)</label><input type="number" id="mg-semanas" min="1" step="1" placeholder="Ej: 20"></div>
-        <div class="stock">Después de crear el grupo, precargas ahí mismo qué motos están disponibles y cuánto se paga por semana según la moto elegida.</div>
+        <div class="stock">El grupo es general para toda la empresa. Cada participante elige a qué sede pertenece — de ahí se recoge su pago semanal.</div>
         <button class="btn" style="margin-top:10px;" onclick="crearGrupoMotosan()">Crear grupo</button>
       </div>
 
       <div class="card">
-        <h3>Grupos activos — ${sedeNombre(ESTADO.sedeSeleccionada)}</h3>
+        <h3>Grupos activos (todas las sedes)</h3>
         <table>
           <thead><tr><th>Grupo</th><th>Semanas totales</th><th></th></tr></thead>
           <tbody>
@@ -838,7 +837,7 @@ async function crearGrupoMotosan(){
   }
 
   const { data, error } = await sb.from('motosan_grupos').insert({
-    sede_id: ESTADO.sedeSeleccionada, nombre, semanas_totales, created_by: ESTADO.perfil.id
+    nombre, semanas_totales, created_by: ESTADO.perfil.id
   }).select().single();
   if(error){ msg.innerHTML = `<div class="msg err">Error: ${error.message}</div>`; return; }
   msg.innerHTML = `<div class="msg ok">Grupo creado. Ahora agrega las motos disponibles abajo.</div>`;
@@ -854,7 +853,7 @@ async function abrirGrupoMotosan(grupoId){
   const { data: grupo } = await sb.from('motosan_grupos').select('*').eq('id', grupoId).single();
   const { data: motosGrupo } = await sb.from('motosan_grupo_motos').select('*, productos(nombre, precio)').eq('grupo_id', grupoId).order('created_at');
   const { data: participantes } = await sb.from('motosan_participantes')
-    .select('*, clientes(nombre_completo, telefono), motosan_grupo_motos(monto_moto, cuota_semanal, productos(nombre))')
+    .select('*, clientes(nombre_completo, telefono), sedes(nombre), motosan_grupo_motos(monto_moto, cuota_semanal, productos(nombre))')
     .eq('grupo_id', grupoId).order('created_at');
 
   const participantesConDatos = [];
@@ -914,11 +913,12 @@ async function abrirGrupoMotosan(grupoId){
       ` : `<div class="stock">Primero agrega al menos una moto disponible arriba.</div>`}
 
       <table>
-        <thead><tr><th>Cliente</th><th>Moto elegida</th><th>Monto</th><th>Cuota/sem</th><th>Pagos</th><th>Total pagado</th><th>Al día</th><th>Estado</th><th></th></tr></thead>
+        <thead><tr><th>Cliente</th><th>Sede</th><th>Moto elegida</th><th>Monto</th><th>Cuota/sem</th><th>Pagos</th><th>Total pagado</th><th>Al día</th><th>Estado</th><th></th></tr></thead>
         <tbody>
           ${participantesConDatos.map(p=>`
             <tr>
               <td>${p.clientes?.nombre_completo}</td>
+              <td>${p.sedes?.nombre || '—'}</td>
               <td>${p.motosan_grupo_motos?.productos?.nombre || '—'}</td>
               <td>${money(p.motosan_grupo_motos?.monto_moto)}</td>
               <td>${money(p.cuota)}</td>
@@ -928,7 +928,7 @@ async function abrirGrupoMotosan(grupoId){
               <td>${p.gano ? '<span class="badge pagada_completa">🏆 Ganó</span>' : '<span class="badge credito_directo">En juego</span>'}</td>
               <td>${p.gano ? '—' : `<button class="btn chico secundario" onclick="registrarPagoMotosan('${p.id}', ${p.cuota})">+ Pago semanal</button>`}</td>
             </tr>
-          `).join('') || `<tr><td colspan="9" class="empty">Sin participantes aún</td></tr>`}
+          `).join('') || `<tr><td colspan="10" class="empty">Sin participantes aún</td></tr>`}
         </tbody>
       </table>
 
@@ -992,6 +992,12 @@ async function abrirModalNuevoParticipante(clienteId, nombreCliente){
     <h3>Inscribir a ${nombreCliente}</h3>
     <div id="modal-participante-msg"></div>
     <div class="form-row">
+      <label>Sede a la que pertenece (de ahí se recoge su pago semanal)</label>
+      <select id="mp-sede">
+        ${ESTADO.sedes.map(s=>`<option value="${s.id}">${s.nombre}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-row">
       <label>Moto que eligió</label>
       <select id="mp-grupo-moto">
         ${(motosGrupo||[]).map(m=>`<option value="${m.id}">${m.productos?.nombre} — ${money(m.monto_moto)} (${money(m.cuota_semanal)}/sem)</option>`).join('')}
@@ -1008,11 +1014,13 @@ async function abrirModalNuevoParticipante(clienteId, nombreCliente){
 async function confirmarNuevoParticipante(clienteId){
   const msg = document.getElementById('modal-participante-msg');
   const grupo_moto_id = document.getElementById('mp-grupo-moto').value;
+  const sede_id = document.getElementById('mp-sede').value;
 
   if(!grupo_moto_id){ msg.innerHTML = `<div class="msg err">Selecciona una moto.</div>`; return; }
+  if(!sede_id){ msg.innerHTML = `<div class="msg err">Selecciona la sede.</div>`; return; }
 
   const { error } = await sb.from('motosan_participantes').insert({
-    grupo_id: MOTOSAN_GRUPO_ACTIVO, cliente_id: clienteId, grupo_moto_id
+    grupo_id: MOTOSAN_GRUPO_ACTIVO, cliente_id: clienteId, grupo_moto_id, sede_id
   });
   if(error){ msg.innerHTML = `<div class="msg err">Error: ${error.message}</div>`; return; }
   cerrarModal();
@@ -1020,7 +1028,21 @@ async function confirmarNuevoParticipante(clienteId){
 }
 
 async function registrarPagoMotosan(participanteId, cuota){
+  const { data: participante } = await sb.from('motosan_participantes').select('*').eq('id', participanteId).single();
+
   await sb.from('motosan_pagos').insert({ participante_id: participanteId, monto: cuota, created_by: ESTADO.perfil.id });
+
+  if(participante?.sede_id){
+    const { data: caja } = await sb.from('cajas').select('*').eq('sede_id', participante.sede_id).single();
+    if(caja){
+      await sb.from('movimientos_caja').insert({
+        caja_id: caja.id, sede_id: participante.sede_id, tipo: 'ingreso_abono', monto: cuota,
+        descripcion: 'Pago semanal Motosán', referencia_id: participanteId, created_by: ESTADO.perfil.id
+      });
+      await sb.from('cajas').update({ saldo_actual: Number(caja.saldo_actual) + cuota }).eq('id', caja.id);
+    }
+  }
+
   abrirGrupoMotosan(MOTOSAN_GRUPO_ACTIVO);
 }
 
@@ -1053,25 +1075,27 @@ async function hacerSorteoMotosan(grupoId){
 
   await sb.from('motosan_participantes').update({ gano: true, fecha_gano: new Date().toISOString() }).eq('id', ganador.participante.id);
 
-  const { data: invRow } = await sb.from('inventario').select('*').eq('sede_id', ESTADO.sedeSeleccionada).eq('producto_id', productoId).maybeSingle();
+  const sedeGanador = ganador.participante.sede_id;
+
+  const { data: invRow } = await sb.from('inventario').select('*').eq('sede_id', sedeGanador).eq('producto_id', productoId).maybeSingle();
   if(invRow){
     await sb.from('inventario').update({ cantidad: Math.max(0, Number(invRow.cantidad) - 1), updated_at: new Date().toISOString() }).eq('id', invRow.id);
   }
   await sb.from('movimientos_inventario').insert({
-    sede_id: ESTADO.sedeSeleccionada, producto_id: productoId, tipo: 'salida_venta',
+    sede_id: sedeGanador, producto_id: productoId, tipo: 'salida_venta',
     cantidad: 1, nota: `Motosán - entrega a ganador del sorteo (${cliente.nombre_completo})`, created_by: ESTADO.perfil.id
   });
 
   const saldoRestante = Math.max(0, montoMoto - ganador.totalPagado);
   if(saldoRestante > 0){
     await sb.from('cuentas_por_cobrar').insert({
-      sede_id: ESTADO.sedeSeleccionada, cliente_id: cliente.id,
+      sede_id: sedeGanador, cliente_id: cliente.id,
       descripcion: `Motosán "${grupo.nombre}" — ${nombreMoto} entregada, saldo restante a pagar`,
       monto_total: montoMoto, saldo_pendiente: saldoRestante, estado: 'pagada_parcial'
     });
   }
 
-  alert(`¡${cliente.nombre_completo} ganó el sorteo! La moto fue descontada del inventario${saldoRestante > 0 ? ' y se creó su cuenta por cobrar por el saldo restante (visible en Cuentas por Cobrar).' : ', y no queda saldo pendiente.'}`);
+  alert(`¡${cliente.nombre_completo} ganó el sorteo! La moto fue descontada del inventario de ${sedeNombre(sedeGanador)}${saldoRestante > 0 ? ' y se creó su cuenta por cobrar por el saldo restante (visible en Cuentas por Cobrar).' : ', y no queda saldo pendiente.'}`);
   abrirGrupoMotosan(grupoId);
 }
 

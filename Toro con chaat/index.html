@@ -418,7 +418,7 @@ let ETIQUETA_ACTIVA = 'todas';
 
 async function cargarMotosanPublico(){
   const { data: grupos } = await sb.from('motosan_grupos')
-    .select('*, sedes(nombre), motosan_grupo_motos(*, productos(nombre, imagen_url))')
+    .select('*, motosan_grupo_motos(*, productos(nombre, imagen_url))')
     .eq('activo', true)
     .order('created_at', {ascending:false});
 
@@ -432,7 +432,7 @@ async function cargarMotosanPublico(){
   cont.innerHTML = gruposConMotos.map(g => `
     <div class="motosan-grupo">
       <h3>${g.nombre}</h3>
-      <div class="sede-tag">${g.sedes?.nombre || ''} · ${g.semanas_totales} semanas de plazo</div>
+      <div class="sede-tag">Disponible en La Fría y Coloncito · ${g.semanas_totales} semanas de plazo</div>
       <div class="motosan-motos">
         ${g.motosan_grupo_motos.map(m => `
           <div class="motosan-moto-card">
