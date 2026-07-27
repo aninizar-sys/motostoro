@@ -107,6 +107,8 @@
   .badge.pagada_parcial{background:#3a3520; color:#e8d070;}
   .badge.pagada_completa{background:#1d3b26; color:var(--verde);}
   .badge.anulada{background:#333; color:#888;}
+  .badge.aceptado{background:#1d3b26; color:var(--verde);}
+  .badge.rechazado, .badge.cancelado{background:#333; color:#888;}
 
   .grid2{display:grid; grid-template-columns:1fr 1fr; gap:20px;}
   .form-row{margin-bottom:14px;}
@@ -211,10 +213,13 @@
       <button data-tab="ahorro">🏦 Plan Ahorro</button>
       <button data-tab="compras">🛒 Compras</button>
       <button data-tab="caja">💰 Caja</button>
+      <button data-tab="cajamatriz" id="nav-caja-matriz" style="display:none;">🏛️ Caja Matriz</button>
       <button data-tab="finanzas">📊 Finanzas</button>
       <button data-tab="cobrar">📋 Cuentas por cobrar</button>
       <button data-tab="pagar">📤 Cuentas por pagar</button>
       <button data-tab="inventario">📦 Inventario</button>
+      <button data-tab="traslados">🔄 Traslados</button>
+      <button data-tab="terceros">🤝 Terceros de confianza</button>
       <button data-tab="productos">🏷️ Productos</button>
       <button data-tab="clientes">👤 Clientes</button>
       <button data-tab="contenido">📝 Contenido de la tienda</button>
@@ -369,6 +374,8 @@ function mostrarApp(){
     wrap.style.display = 'none';
   }
 
+  document.getElementById('nav-caja-matriz').style.display = ESTADO.perfil.rol === 'admin_general' ? 'block' : 'none';
+
   document.querySelectorAll('#nav-menu button').forEach(btn=>{
     btn.onclick = () => cambiarTab(btn.dataset.tab);
   });
@@ -394,8 +401,8 @@ function cerrarMenuMovil(){
    NAVEGACIÓN DE TABS
 ========================================================= */
 const TITULOS = {
-  ventas: 'Ventas', motosan: 'Motosán', ahorro: 'Plan Ahorro', compras: 'Compras', caja: 'Caja', finanzas: 'Finanzas', cobrar: 'Cuentas por cobrar', pagar: 'Cuentas por pagar',
-  inventario: 'Inventario', productos: 'Productos', clientes: 'Clientes', contenido: 'Contenido de la tienda'
+  ventas: 'Ventas', motosan: 'Motosán', ahorro: 'Plan Ahorro', compras: 'Compras', caja: 'Caja', cajamatriz: 'Caja Matriz', finanzas: 'Finanzas', cobrar: 'Cuentas por cobrar', pagar: 'Cuentas por pagar',
+  inventario: 'Inventario', traslados: 'Traslados entre sedes', terceros: 'Terceros de confianza', productos: 'Productos', clientes: 'Clientes', contenido: 'Contenido de la tienda'
 };
 
 function cambiarTab(tab){
@@ -412,10 +419,13 @@ function cambiarTab(tab){
     ahorro: renderPlanAhorro,
     compras: renderCompras,
     caja: renderCaja,
+    cajamatriz: renderCajaMatriz,
     finanzas: renderFinanzas,
     cobrar: renderCobrar,
     pagar: renderPagar,
     inventario: renderInventario,
+    traslados: renderTraslados,
+    terceros: renderTerceros,
     productos: renderProductos,
     clientes: renderClientes,
     contenido: renderContenidoTienda
@@ -477,6 +487,89 @@ function mejorMatchProducto(nombre, codigo){
 }
 
 /* =========================================================
+   MONEDA Y MÉTODO DE PAGO (reutilizable en toda la caja)
+========================================================= */
+const METODOS_POR_MONEDA = {
+  USD: ['Efectivo', 'Zelle'],
+  COP: ['Efectivo', 'Bancolombia'],
+  VES: ['Pago móvil / Transferencia', 'Efectivo']
+};
+
+function bloqueMoneda(prefix){
+  return `
+    <div class="inline-2">
+      <div class="form-row" style="margin-bottom:0;">
+        <label>Moneda recibida/pagada</label>
+        <select id="${prefix}-moneda" onchange="actualizarMetodosGenerico('${prefix}')">
+          <option value="USD">Dólares (USD)</option>
+          <option value="COP">Pesos colombianos (COP)</option>
+          <option value="VES">Bolívares (VES)</option>
+        </select>
+      </div>
+      <div class="form-row" style="margin-bottom:0;">
+        <label>Forma de pago</label>
+        <select id="${prefix}-metodo"></select>
+      </div>
+    </div>
+    <div class="form-row" id="${prefix}-tasa-wrap" style="display:none;">
+      <label>Tasa de cambio (1 USD = X)</label>
+      <input type="number" id="${prefix}-tasa" min="0" step="0.01">
+      <div class="stock" id="${prefix}-equivale"></div>
+    </div>
+  `;
+}
+
+function actualizarMetodosGenerico(prefix){
+  const monedaEl = document.getElementById(`${prefix}-moneda`);
+  if(!monedaEl) return;
+  const moneda = monedaEl.value;
+  document.getElementById(`${prefix}-metodo`).innerHTML = METODOS_POR_MONEDA[moneda].map(m=>`<option value="${m}">${m}</option>`).join('');
+  const tasaWrap = document.getElementById(`${prefix}-tasa-wrap`);
+  if(tasaWrap) tasaWrap.style.display = moneda === 'USD' ? 'none' : 'block';
+}
+
+// Lee moneda/método/tasa de un bloqueMoneda(prefix) y calcula el monto en esa moneda
+// a partir del monto ya definido en USD por la lógica de negocio (venta, gasto, abono, etc.)
+function datosMonedaCaja(prefix, montoUsd){
+  const moneda = document.getElementById(`${prefix}-moneda`)?.value || 'USD';
+  const metodo = document.getElementById(`${prefix}-metodo`)?.value || 'Efectivo';
+  let tasa = null, montoOriginal = montoUsd;
+  if(moneda !== 'USD'){
+    tasa = parseFloat(document.getElementById(`${prefix}-tasa`)?.value);
+    if(!tasa || tasa <= 0) return { error: 'Ingresa la tasa de cambio.' };
+    montoOriginal = montoUsd * tasa;
+  }
+  return { moneda, metodo, tasa, montoOriginal };
+}
+
+// Selector de "¿desde qué caja sale/entra este dinero?" — solo tiene sentido para admin_general,
+// que puede elegir entre la caja de la sede que está viendo o la Caja Matriz.
+function bloqueOrigenCaja(prefix){
+  if(ESTADO.perfil?.rol !== 'admin_general') return '';
+  return `
+    <div class="form-row">
+      <label>¿Desde/hacia qué caja es este pago?</label>
+      <select id="${prefix}-origen-caja">
+        <option value="sede">Caja de ${sedeNombre(ESTADO.sedeSeleccionada)}</option>
+        <option value="matriz">Caja Matriz</option>
+      </select>
+    </div>
+  `;
+}
+
+// Devuelve la caja (y el sede_id a usar en movimientos_caja) según lo elegido en bloqueOrigenCaja.
+// Si el bloque no existe (no es admin_general), siempre usa la caja de la sede actual.
+async function obtenerCajaOrigen(prefix){
+  const sel = document.getElementById(`${prefix}-origen-caja`);
+  if(sel && sel.value === 'matriz'){
+    const { data: caja } = await sb.from('cajas').select('*').is('sede_id', null).single();
+    return { caja, sede_id: null };
+  }
+  const { data: caja } = await sb.from('cajas').select('*').eq('sede_id', ESTADO.sedeSeleccionada).single();
+  return { caja, sede_id: ESTADO.sedeSeleccionada };
+}
+
+/* =========================================================
    VENTAS
 ========================================================= */
 async function renderVentas(){
@@ -530,6 +623,9 @@ async function renderVentas(){
           </div>
         </div>
 
+        <div class="form-row" style="margin-top:14px;"><label>¿Cómo te están pagando?</label></div>
+        ${bloqueMoneda('vt')}
+
         <button class="btn" style="margin-top:10px;" onclick="registrarVenta()">Registrar venta</button>
       </div>
 
@@ -557,6 +653,7 @@ async function renderVentas(){
     </div>
   `;
   renderLineasVenta();
+  actualizarMetodosGenerico('vt');
 }
 
 async function cargarProductosYClientes(){
@@ -717,6 +814,13 @@ async function registrarVenta(){
     }
   }
 
+  const montoParaCajaValidar = esCredito ? abonoInicial : total;
+  let pago = null;
+  if(montoParaCajaValidar > 0){
+    pago = datosMonedaCaja('vt', montoParaCajaValidar);
+    if(pago.error){ msg.innerHTML = `<div class="msg err">${pago.error}</div>`; return; }
+  }
+
   const estadoVenta = !esCredito ? 'pagada_completa' : (abonoInicial >= total ? 'pagada_completa' : (abonoInicial > 0 ? 'pagada_parcial' : 'pendiente'));
 
   const { data: venta, error: errVenta } = await sb.from('ventas').insert({
@@ -756,6 +860,7 @@ async function registrarVenta(){
     await sb.from('movimientos_caja').insert({
       caja_id: caja.id, sede_id: ESTADO.sedeSeleccionada,
       tipo: esCredito ? 'ingreso_abono' : 'ingreso_venta', monto: montoParaCaja,
+      moneda: pago.moneda, metodo_pago: pago.metodo, monto_original: pago.montoOriginal, tasa_cambio: pago.tasa,
       descripcion: esCredito ? 'Abono inicial de venta a crédito' : 'Venta de contado',
       referencia_id: venta.id, created_by: ESTADO.perfil.id
     });
@@ -926,7 +1031,7 @@ async function abrirGrupoMotosan(grupoId){
               <td>${money(p.totalPagado)}</td>
               <td>${p.gano ? '—' : (p.alDia ? '<span class="badge pagada_completa">Al día</span>' : '<span class="badge pendiente">Atrasado</span>')}</td>
               <td>${p.gano ? '<span class="badge pagada_completa">🏆 Ganó</span>' : '<span class="badge credito_directo">En juego</span>'}</td>
-              <td>${p.gano ? '—' : `<button class="btn chico secundario" onclick="registrarPagoMotosan('${p.id}', ${p.cuota})">+ Pago semanal</button>`}</td>
+              <td>${p.gano ? '—' : `<button class="btn chico secundario" onclick="abrirModalPagoMotosan('${p.id}', ${p.cuota})">+ Pago semanal</button>`}</td>
             </tr>
           `).join('') || `<tr><td colspan="10" class="empty">Sin participantes aún</td></tr>`}
         </tbody>
@@ -1027,22 +1132,50 @@ async function confirmarNuevoParticipante(clienteId){
   abrirGrupoMotosan(MOTOSAN_GRUPO_ACTIVO);
 }
 
+function abrirModalPagoMotosan(participanteId, cuota){
+  document.getElementById('modal-contenido').innerHTML = `
+    <h3>Registrar pago semanal — Motosán</h3>
+    <div id="motosan-pago-msg"></div>
+    <div class="form-row"><label>Cuota semanal</label><input type="text" value="${money(cuota)}" disabled></div>
+    ${bloqueMoneda('msp')}
+    <div class="acciones">
+      <button class="btn secundario" onclick="cerrarModal()">Cancelar</button>
+      <button class="btn" onclick="registrarPagoMotosan('${participanteId}', ${cuota})">Registrar pago</button>
+    </div>
+  `;
+  document.getElementById('modal-bg').classList.add('activo');
+  actualizarMetodosGenerico('msp');
+}
+
 async function registrarPagoMotosan(participanteId, cuota){
+  const msg = document.getElementById('motosan-pago-msg');
   const { data: participante } = await sb.from('motosan_participantes').select('*').eq('id', participanteId).single();
 
-  await sb.from('motosan_pagos').insert({ participante_id: participanteId, monto: cuota, created_by: ESTADO.perfil.id });
-
-  if(participante?.sede_id){
-    const { data: caja } = await sb.from('cajas').select('*').eq('sede_id', participante.sede_id).single();
-    if(caja){
-      await sb.from('movimientos_caja').insert({
-        caja_id: caja.id, sede_id: participante.sede_id, tipo: 'ingreso_abono', monto: cuota,
-        descripcion: 'Pago semanal Motosán', referencia_id: participanteId, created_by: ESTADO.perfil.id
-      });
-      await sb.from('cajas').update({ saldo_actual: Number(caja.saldo_actual) + cuota }).eq('id', caja.id);
-    }
+  if(!participante?.sede_id){
+    msg.innerHTML = `<div class="msg err">Este participante no tiene sede asignada, así que el pago no se puede acreditar a ninguna caja. Corrige su sede antes de registrar el pago.</div>`;
+    return;
   }
 
+  const { data: caja } = await sb.from('cajas').select('*').eq('sede_id', participante.sede_id).single();
+  if(!caja){
+    msg.innerHTML = `<div class="msg err">No se encontró una caja para la sede de este participante. El pago no fue registrado.</div>`;
+    return;
+  }
+
+  const pago = datosMonedaCaja('msp', cuota);
+  if(pago.error){ msg.innerHTML = `<div class="msg err">${pago.error}</div>`; return; }
+
+  const { error } = await sb.from('motosan_pagos').insert({ participante_id: participanteId, monto: cuota, created_by: ESTADO.perfil.id });
+  if(error){ msg.innerHTML = `<div class="msg err">Error al registrar el pago: ${error.message}</div>`; return; }
+
+  await sb.from('movimientos_caja').insert({
+    caja_id: caja.id, sede_id: participante.sede_id, tipo: 'ingreso_abono', monto: cuota,
+    moneda: pago.moneda, metodo_pago: pago.metodo, monto_original: pago.montoOriginal, tasa_cambio: pago.tasa,
+    descripcion: 'Pago semanal Motosán', referencia_id: participanteId, created_by: ESTADO.perfil.id
+  });
+  await sb.from('cajas').update({ saldo_actual: Number(caja.saldo_actual) + cuota }).eq('id', caja.id);
+
+  cerrarModal();
   abrirGrupoMotosan(MOTOSAN_GRUPO_ACTIVO);
 }
 
@@ -1102,12 +1235,6 @@ async function hacerSorteoMotosan(grupoId){
 /* =========================================================
    PLAN AHORRO
 ========================================================= */
-const METODOS_POR_MONEDA = {
-  USD: ['Efectivo', 'Zelle'],
-  COP: ['Efectivo', 'Bancolombia'],
-  VES: ['Pago móvil / Transferencia', 'Efectivo']
-};
-
 async function renderPlanAhorro(){
   const cont = document.getElementById('contenido-tab');
   cont.innerHTML = `<div class="empty">Cargando...</div>`;
@@ -1286,6 +1413,7 @@ async function confirmarPagoAhorro(planId, saldoActual){
   if(caja){
     await sb.from('movimientos_caja').insert({
       caja_id: caja.id, sede_id: ESTADO.sedeSeleccionada, tipo: 'ingreso_abono', monto: montoUsd,
+      moneda, metodo_pago: metodo, monto_original: montoOriginal, tasa_cambio: tasa,
       descripcion: `Plan Ahorro — pago en ${moneda} por ${metodo}${tasa ? ` (tasa ${tasa})` : ''}`,
       referencia_id: planId, created_by: ESTADO.perfil.id
     });
@@ -1381,6 +1509,10 @@ async function renderCompras(){
           </div>
         </div>
 
+        <div class="form-row" style="margin-top:6px;"><label>Si se paga algo ahora, ¿en qué moneda/forma?</label></div>
+        ${bloqueMoneda('cp')}
+        ${bloqueOrigenCaja('cp')}
+
         <div class="form-row" style="margin-top:10px;">
           <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
             <input type="checkbox" id="compra-aplica-retencion" onchange="onRetencionChange()" style="width:auto;">
@@ -1442,6 +1574,7 @@ async function renderCompras(){
       </table>
     </div>
   `;
+  actualizarMetodosGenerico('cp');
 }
 
 function onRetencionChange(){
@@ -1654,6 +1787,12 @@ async function registrarCompra(){
     if(montoPagado > montoAPagarProveedor){ msg.innerHTML = `<div class="msg err">El abono no puede ser mayor a lo que se le debe al proveedor (${money(montoAPagarProveedor)}).</div>`; return; }
   }
 
+  let pagoCompra = null;
+  if(montoPagado > 0){
+    pagoCompra = datosMonedaCaja('cp', montoPagado);
+    if(pagoCompra.error){ msg.innerHTML = `<div class="msg err">${pagoCompra.error}</div>`; return; }
+  }
+
   // Proveedor: buscar o crear
   let proveedorId = null;
   if(nombreProveedor){
@@ -1711,10 +1850,11 @@ async function registrarCompra(){
 
   // Caja (si se pagó algo ahora)
   if(montoPagado > 0){
-    const { data: caja } = await sb.from('cajas').select('*').eq('sede_id', ESTADO.sedeSeleccionada).single();
+    const { caja, sede_id: sedeCajaId } = await obtenerCajaOrigen('cp');
     if(caja){
       await sb.from('movimientos_caja').insert({
-        caja_id: caja.id, sede_id: ESTADO.sedeSeleccionada, tipo: 'egreso_compra', monto: montoPagado,
+        caja_id: caja.id, sede_id: sedeCajaId, tipo: 'egreso_compra', monto: montoPagado,
+        moneda: pagoCompra.moneda, metodo_pago: pagoCompra.metodo, monto_original: pagoCompra.montoOriginal, tasa_cambio: pagoCompra.tasa,
         descripcion: `Compra${nombreProveedor ? ' a ' + nombreProveedor : ''}`, referencia_id: compra.id, created_by: ESTADO.perfil.id
       });
       await sb.from('cajas').update({ saldo_actual: Number(caja.saldo_actual) - montoPagado }).eq('id', caja.id);
@@ -1736,24 +1876,102 @@ async function registrarCompra(){
 /* =========================================================
    CAJA
 ========================================================= */
+const NOMBRES_METODO_ICONO = {
+  'Efectivo': '💵', 'Zelle': '📲', 'Bancolombia': '🏦', 'Pago móvil / Transferencia': '🏦'
+};
+const SIMBOLO_MONEDA = { USD: '$', COP: 'COP ', VES: 'Bs. ' };
+const ORDEN_MONEDA = { USD: 0, COP: 1, VES: 2 };
+
+function fmtMoneda(moneda, n){
+  return `${SIMBOLO_MONEDA[moneda]||''}${Number(n).toLocaleString('es-VE', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+}
+
+// Agrupa una lista de movimientos_caja por moneda + método de pago, sumando en la moneda original (sin convertir)
+function agruparPorMonedaMetodo(movimientos){
+  const grupos = {};
+  for(const m of (movimientos||[])){
+    const moneda = m.moneda || 'USD';
+    const metodo = m.metodo_pago || 'Efectivo';
+    const clave = moneda + '|' + metodo;
+    if(!grupos[clave]) grupos[clave] = { moneda, metodo, ingresos: 0, egresos: 0 };
+    const montoOriginal = Number(m.monto_original ?? m.monto);
+    if(m.tipo.startsWith('ingreso')) grupos[clave].ingresos += montoOriginal;
+    else grupos[clave].egresos += montoOriginal;
+  }
+  return Object.values(grupos).sort((a,b)=>
+    (ORDEN_MONEDA[a.moneda]-ORDEN_MONEDA[b.moneda]) || a.metodo.localeCompare(b.metodo));
+}
+
+function tablaMultimoneda(movimientos, notaExtra){
+  const gruposOrdenados = agruparPorMonedaMetodo(movimientos);
+  return `
+    <div class="card">
+      <h3>💱 Panel multimoneda — cuánto hay de cada tipo</h3>
+      <div class="stock" style="margin-bottom:10px;">Desglose por moneda y forma de pago, en la moneda en que realmente se recibió/pagó (sin convertir).${notaExtra ? ' ' + notaExtra : ''}</div>
+      <table>
+        <thead><tr><th>Moneda</th><th>Forma de pago</th><th>Ingresos</th><th>Egresos</th><th>Neto</th></tr></thead>
+        <tbody>
+          ${gruposOrdenados.map(g=>{
+            const neto = g.ingresos - g.egresos;
+            return `<tr>
+              <td>${g.moneda}</td>
+              <td>${NOMBRES_METODO_ICONO[g.metodo]||''} ${g.metodo}</td>
+              <td style="color:var(--verde)">${fmtMoneda(g.moneda, g.ingresos)}</td>
+              <td style="color:var(--rojo)">${fmtMoneda(g.moneda, g.egresos)}</td>
+              <td style="font-weight:600;">${fmtMoneda(g.moneda, neto)}</td>
+            </tr>`;
+          }).join('') || `<tr><td colspan="5" class="empty">Sin movimientos todavía</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function tablaMovimientosRecientes(movimientos, conColumnaSede){
+  return `
+    <div class="card">
+      <h3>Movimientos recientes</h3>
+      <table>
+        <thead><tr><th>Fecha</th>${conColumnaSede?'<th>Sede</th>':''}<th>Tipo</th><th>Descripción</th><th>Moneda/Forma</th><th>Monto</th></tr></thead>
+        <tbody>
+          ${(movimientos||[]).slice(0,60).map(m=>`
+            <tr>
+              <td>${fecha(m.created_at)}</td>
+              ${conColumnaSede?`<td>${m.sede_id ? sedeNombre(m.sede_id) : 'Matriz'}</td>`:''}
+              <td>${m.tipo.replace(/_/g,' ')}</td>
+              <td>${m.descripcion||'—'}</td>
+              <td>${m.moneda||'USD'}${m.moneda && m.moneda!=='USD' ? ` (${fmtMoneda(m.moneda, m.monto_original)})` : ''} — ${m.metodo_pago||'Efectivo'}</td>
+              <td style="color:${m.tipo.startsWith('ingreso')?'var(--verde)':'var(--rojo)'}">
+                ${m.tipo.startsWith('ingreso')?'+':'-'}${money(m.monto)}
+              </td>
+            </tr>
+          `).join('') || `<tr><td colspan="${conColumnaSede?6:5}" class="empty">Sin movimientos todavía</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
 async function renderCaja(){
   const cont = document.getElementById('contenido-tab');
   cont.innerHTML = `<div class="empty">Cargando...</div>`;
 
   const { data: caja } = await sb.from('cajas').select('*').eq('sede_id', ESTADO.sedeSeleccionada).single();
-  const { data: movimientos } = await sb.from('movimientos_caja')
+  const { data: todosMovimientos } = await sb.from('movimientos_caja')
     .select('*').eq('sede_id', ESTADO.sedeSeleccionada)
-    .order('created_at', {ascending:false}).limit(60);
+    .order('created_at', {ascending:false});
 
-  const ingresos = (movimientos||[]).filter(m=>m.tipo.startsWith('ingreso')).reduce((s,m)=>s+Number(m.monto),0);
-  const egresos = (movimientos||[]).filter(m=>m.tipo.startsWith('egreso')).reduce((s,m)=>s+Number(m.monto),0);
+  const ingresos = (todosMovimientos||[]).filter(m=>m.tipo.startsWith('ingreso')).reduce((s,m)=>s+Number(m.monto),0);
+  const egresos = (todosMovimientos||[]).filter(m=>m.tipo.startsWith('egreso')).reduce((s,m)=>s+Number(m.monto),0);
 
   cont.innerHTML = `
     <div class="kpis">
-      <div class="kpi"><div class="label">Saldo actual — ${sedeNombre(ESTADO.sedeSeleccionada)}</div><div class="valor">${money(caja?.saldo_actual)}</div></div>
-      <div class="kpi verde"><div class="label">Ingresos (últimos mov.)</div><div class="valor">${money(ingresos)}</div></div>
-      <div class="kpi rojo"><div class="label">Egresos (últimos mov.)</div><div class="valor">${money(egresos)}</div></div>
+      <div class="kpi"><div class="label">Saldo total en caja (equivalente USD) — ${sedeNombre(ESTADO.sedeSeleccionada)}</div><div class="valor">${money(caja?.saldo_actual)}</div></div>
+      <div class="kpi verde"><div class="label">Ingresos (histórico)</div><div class="valor">${money(ingresos)}</div></div>
+      <div class="kpi rojo"><div class="label">Egresos (histórico)</div><div class="valor">${money(egresos)}</div></div>
     </div>
+
+    ${tablaMultimoneda(todosMovimientos, 'El saldo total de arriba sí está todo en su equivalente USD.')}
 
     <div class="card">
       <h3>Registrar egreso (gasto)</h3>
@@ -1766,36 +1984,33 @@ async function renderCaja(){
           </select>
         </div>
         <div class="form-row" style="margin-bottom:0;">
-          <label>Monto</label>
+          <label>Monto (equivalente USD)</label>
           <input type="number" id="monto-gasto" min="0" step="0.01" placeholder="0.00">
         </div>
         <div class="form-row" style="margin-bottom:0;">
           <label>Descripción</label>
           <input type="text" id="desc-gasto" placeholder="Opcional">
         </div>
-        <button class="btn chico" onclick="registrarGasto()">Registrar</button>
       </div>
+      <div class="form-row" style="margin-top:6px;"><label>¿En qué moneda/forma se pagó?</label></div>
+      ${bloqueMoneda('gto')}
+      <button class="btn chico" style="margin-top:6px;" onclick="registrarGasto()">Registrar</button>
     </div>
 
     <div class="card">
-      <h3>Movimientos recientes</h3>
-      <table>
-        <thead><tr><th>Fecha</th><th>Tipo</th><th>Descripción</th><th>Monto</th></tr></thead>
-        <tbody>
-          ${(movimientos||[]).map(m=>`
-            <tr>
-              <td>${fecha(m.created_at)}</td>
-              <td>${m.tipo.replace('_',' ')}</td>
-              <td>${m.descripcion||'—'}</td>
-              <td style="color:${m.tipo.startsWith('ingreso')?'var(--verde)':'var(--rojo)'}">
-                ${m.tipo.startsWith('ingreso')?'+':'-'}${money(m.monto)}
-              </td>
-            </tr>
-          `).join('') || `<tr><td colspan="4" class="empty">Sin movimientos todavía</td></tr>`}
-        </tbody>
-      </table>
+      <h3>🏛️ Retirar dinero a la Caja Matriz</h3>
+      <div class="stock" style="margin-bottom:10px;">Usa esto cuando saques efectivo/dinero de esta sede para llevarlo o transferirlo a la caja principal de la empresa.</div>
+      <div id="retiro-matriz-msg"></div>
+      <div class="form-row" style="margin-bottom:0;"><label>Monto a retirar (equivalente USD)</label><input type="number" id="monto-retiro-matriz" min="0" step="0.01" placeholder="0.00"></div>
+      <div class="form-row" style="margin-top:6px;"><label>¿En qué moneda/forma sale de esta caja?</label></div>
+      ${bloqueMoneda('rtm')}
+      <button class="btn chico secundario" style="margin-top:6px;" onclick="retirarACajaMatriz()">Retirar a Caja Matriz</button>
     </div>
+
+    ${tablaMovimientosRecientes(todosMovimientos, false)}
   `;
+  actualizarMetodosGenerico('gto');
+  actualizarMetodosGenerico('rtm');
 }
 
 async function registrarGasto(){
@@ -1805,6 +2020,9 @@ async function registrarGasto(){
   const desc = document.getElementById('desc-gasto').value.trim();
 
   if(!monto || monto <= 0){ msg.innerHTML = `<div class="msg err">Ingresa un monto válido.</div>`; return; }
+
+  const pago = datosMonedaCaja('gto', monto);
+  if(pago.error){ msg.innerHTML = `<div class="msg err">${pago.error}</div>`; return; }
 
   const { data: gasto, error } = await sb.from('gastos').insert({
     sede_id: ESTADO.sedeSeleccionada, tipo, monto, descripcion: desc, created_by: ESTADO.perfil.id
@@ -1816,11 +2034,252 @@ async function registrarGasto(){
     const tipoMovimiento = 'egreso_' + (tipo === 'pago_empleado' ? 'pago_empleado' : tipo);
     await sb.from('movimientos_caja').insert({
       caja_id: caja.id, sede_id: ESTADO.sedeSeleccionada, tipo: tipoMovimiento, monto,
+      moneda: pago.moneda, metodo_pago: pago.metodo, monto_original: pago.montoOriginal, tasa_cambio: pago.tasa,
       descripcion: desc || TIPOS_GASTO[tipo], referencia_id: gasto.id, created_by: ESTADO.perfil.id
     });
     await sb.from('cajas').update({ saldo_actual: Number(caja.saldo_actual) - monto }).eq('id', caja.id);
   }
   renderCaja();
+}
+
+async function retirarACajaMatriz(){
+  const msg = document.getElementById('retiro-matriz-msg');
+  const monto = parseFloat(document.getElementById('monto-retiro-matriz').value);
+  if(!monto || monto <= 0){ msg.innerHTML = `<div class="msg err">Ingresa un monto válido.</div>`; return; }
+
+  const { data: cajaSede } = await sb.from('cajas').select('*').eq('sede_id', ESTADO.sedeSeleccionada).single();
+  if(!cajaSede){ msg.innerHTML = `<div class="msg err">No se encontró la caja de esta sede.</div>`; return; }
+  if(monto > Number(cajaSede.saldo_actual)){ msg.innerHTML = `<div class="msg err">No puedes retirar más de lo que hay en esta caja (${money(cajaSede.saldo_actual)}).</div>`; return; }
+
+  const { data: cajaMatriz } = await sb.from('cajas').select('*').is('sede_id', null).single();
+  if(!cajaMatriz){ msg.innerHTML = `<div class="msg err">No se encontró la Caja Matriz.</div>`; return; }
+
+  const pago = datosMonedaCaja('rtm', monto);
+  if(pago.error){ msg.innerHTML = `<div class="msg err">${pago.error}</div>`; return; }
+
+  const nombreSede = sedeNombre(ESTADO.sedeSeleccionada);
+
+  await sb.from('movimientos_caja').insert({
+    caja_id: cajaSede.id, sede_id: ESTADO.sedeSeleccionada, tipo: 'egreso_retiro_matriz', monto,
+    moneda: pago.moneda, metodo_pago: pago.metodo, monto_original: pago.montoOriginal, tasa_cambio: pago.tasa,
+    descripcion: `Retiro hacia Caja Matriz`, created_by: ESTADO.perfil.id
+  });
+  await sb.from('cajas').update({ saldo_actual: Number(cajaSede.saldo_actual) - monto }).eq('id', cajaSede.id);
+
+  await sb.from('movimientos_caja').insert({
+    caja_id: cajaMatriz.id, sede_id: null, tipo: 'ingreso_retiro_sede', monto,
+    moneda: pago.moneda, metodo_pago: pago.metodo, monto_original: pago.montoOriginal, tasa_cambio: pago.tasa,
+    descripcion: `Retiro recibido de ${nombreSede}`, created_by: ESTADO.perfil.id
+  });
+  await sb.from('cajas').update({ saldo_actual: Number(cajaMatriz.saldo_actual) + monto }).eq('id', cajaMatriz.id);
+
+  renderCaja();
+}
+
+/* =========================================================
+   CAJA MATRIZ (solo admin_general — no pertenece a ninguna sede)
+========================================================= */
+async function renderCajaMatriz(){
+  const cont = document.getElementById('contenido-tab');
+  cont.innerHTML = `<div class="empty">Cargando...</div>`;
+
+  const { data: cajaMatriz } = await sb.from('cajas').select('*').is('sede_id', null).single();
+  const { data: todosMovimientos } = await sb.from('movimientos_caja')
+    .select('*').is('sede_id', null)
+    .order('created_at', {ascending:false});
+  const { data: terceros } = await sb.from('terceros_confianza').select('*').order('nombre');
+  ESTADO.terceros = terceros || [];
+  const { data: movimientosTercerosMatriz } = await sb.from('movimientos_tercero')
+    .select('*, terceros_confianza(nombre)').is('sede_id', null)
+    .order('fecha', {ascending:false}).order('created_at', {ascending:false}).limit(40);
+
+  const ingresos = (todosMovimientos||[]).filter(m=>m.tipo.startsWith('ingreso')).reduce((s,m)=>s+Number(m.monto),0);
+  const egresos = (todosMovimientos||[]).filter(m=>m.tipo.startsWith('egreso')).reduce((s,m)=>s+Number(m.monto),0);
+
+  cont.innerHTML = `
+    <div class="stock" style="margin-bottom:10px;">Esta es la caja consolidada de la empresa, separada de las cajas de cada sede. Aquí llega el dinero que se retira de La Fría y Coloncito (y de las sedes que se agreguen a futuro).</div>
+    <div class="kpis">
+      <div class="kpi"><div class="label">Saldo Caja Matriz (equivalente USD)</div><div class="valor">${money(cajaMatriz?.saldo_actual)}</div></div>
+      <div class="kpi verde"><div class="label">Ingresos (histórico)</div><div class="valor">${money(ingresos)}</div></div>
+      <div class="kpi rojo"><div class="label">Egresos (histórico)</div><div class="valor">${money(egresos)}</div></div>
+    </div>
+
+    ${tablaMultimoneda(todosMovimientos, 'El saldo total de arriba sí está todo en su equivalente USD.')}
+
+    <div class="card">
+      <h3>Registrar egreso desde Caja Matriz</h3>
+      <div class="stock" style="margin-bottom:10px;">Para gastos generales de la empresa que se pagan directo desde la caja principal (no desde una sede).</div>
+      <div id="gasto-matriz-msg"></div>
+      <div class="inline-3">
+        <div class="form-row" style="margin-bottom:0;">
+          <label>Tipo de gasto</label>
+          <select id="tipo-gasto-matriz">
+            ${Object.entries(TIPOS_GASTO).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-row" style="margin-bottom:0;">
+          <label>Monto (equivalente USD)</label>
+          <input type="number" id="monto-gasto-matriz" min="0" step="0.01" placeholder="0.00">
+        </div>
+        <div class="form-row" style="margin-bottom:0;">
+          <label>Descripción</label>
+          <input type="text" id="desc-gasto-matriz" placeholder="Opcional">
+        </div>
+      </div>
+      <div class="form-row" style="margin-top:6px;"><label>¿En qué moneda/forma se pagó?</label></div>
+      ${bloqueMoneda('gtm')}
+      <button class="btn chico" style="margin-top:6px;" onclick="registrarGastoMatriz()">Registrar</button>
+    </div>
+
+    <div class="card">
+      <h3>🤝 Entregar/recibir dinero con un tercero de confianza</h3>
+      <div class="stock" style="margin-bottom:10px;">Para cuando le entregas dinero (o te devuelve) a alguien de confianza directo desde la Caja Matriz. Esto siempre se descuenta/suma aquí, porque es justamente un retiro/ingreso de esta caja.</div>
+      <div id="tercero-matriz-msg"></div>
+      <div class="inline-2">
+        <div class="form-row" style="margin-bottom:0;">
+          <label>Tercero</label>
+          <select id="tm-tercero">
+            ${ESTADO.terceros.map(t=>`<option value="${t.id}">${t.nombre}</option>`).join('') || `<option value="">Sin terceros creados</option>`}
+          </select>
+        </div>
+        <div class="form-row" style="margin-bottom:0;">
+          <label>O crear uno nuevo</label>
+          <div style="display:flex; gap:8px;">
+            <input type="text" id="tm-nuevo-tercero" placeholder="Nombre">
+            <button class="btn chico secundario" onclick="crearTerceroDesdeMatriz()" style="white-space:nowrap;">+ Crear</button>
+          </div>
+        </div>
+      </div>
+      <div class="form-row">
+        <label>¿Qué pasó?</label>
+        <select id="tm-tipo">
+          <option value="entrega">Le entregué dinero a él</option>
+          <option value="recibo">Me entregó dinero a mí</option>
+        </select>
+      </div>
+      <div class="inline-2">
+        <div class="form-row" style="margin-bottom:0;"><label>Fecha</label><input type="date" id="tm-fecha" value="${new Date().toISOString().slice(0,10)}"></div>
+        <div class="form-row" style="margin-bottom:0;"><label>Monto (equivalente USD)</label><input type="number" id="tm-monto" min="0.01" step="0.01" placeholder="0.00"></div>
+      </div>
+      <div class="form-row" style="margin-top:6px;"><label>¿En qué moneda/forma?</label></div>
+      ${bloqueMoneda('tmm')}
+      <div class="form-row"><label>Motivo (opcional)</label><input type="text" id="tm-motivo" placeholder="Ej: pago a proveedor XYZ"></div>
+      <div class="form-row"><label>Foto del comprobante (opcional)</label><input type="file" id="tm-foto" accept="image/*"></div>
+      <button class="btn chico" onclick="registrarMovimientoTerceroMatriz()">Registrar</button>
+    </div>
+
+    <div class="card">
+      <h3>Historial con terceros desde Caja Matriz</h3>
+      <table>
+        <thead><tr><th>Fecha</th><th>Tercero</th><th>Tipo</th><th>Monto</th><th>Moneda/Forma</th><th>Motivo</th><th>Comprobante</th></tr></thead>
+        <tbody>
+          ${(movimientosTercerosMatriz||[]).map(m=>`
+            <tr>
+              <td>${m.fecha}</td>
+              <td>${m.terceros_confianza?.nombre||'—'}</td>
+              <td>${m.tipo==='entrega' ? 'Le entregué' : 'Me entregó'}</td>
+              <td style="color:${m.tipo==='entrega'?'var(--rojo)':'var(--verde)'}">${money(m.monto)}</td>
+              <td>${m.moneda}${m.moneda!=='USD' ? ` (${fmtMoneda(m.moneda, m.monto_original)})` : ''} — ${m.metodo_pago}</td>
+              <td>${m.motivo||'—'}</td>
+              <td>${m.foto_url ? `<a href="${m.foto_url}" target="_blank">Ver foto</a>` : '—'}</td>
+            </tr>
+          `).join('') || `<tr><td colspan="7" class="empty">Sin movimientos todavía</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+
+    ${tablaMovimientosRecientes(todosMovimientos, true)}
+  `;
+  actualizarMetodosGenerico('gtm');
+  actualizarMetodosGenerico('tmm');
+}
+
+async function crearTerceroDesdeMatriz(){
+  const msg = document.getElementById('tercero-matriz-msg');
+  const nombre = document.getElementById('tm-nuevo-tercero').value.trim();
+  if(!nombre){ msg.innerHTML = `<div class="msg err">Ponle un nombre.</div>`; return; }
+  const { error } = await sb.from('terceros_confianza').insert({ nombre, created_by: ESTADO.perfil.id });
+  if(error){ msg.innerHTML = `<div class="msg err">Error: ${error.message}</div>`; return; }
+  renderCajaMatriz();
+}
+
+async function registrarMovimientoTerceroMatriz(){
+  const msg = document.getElementById('tercero-matriz-msg');
+  const terceroId = document.getElementById('tm-tercero').value;
+  const tipo = document.getElementById('tm-tipo').value;
+  const fecha = document.getElementById('tm-fecha').value;
+  const monto = parseFloat(document.getElementById('tm-monto').value);
+  const motivo = document.getElementById('tm-motivo').value.trim();
+  const archivoFoto = document.getElementById('tm-foto').files[0];
+
+  if(!terceroId){ msg.innerHTML = `<div class="msg err">Selecciona o crea un tercero.</div>`; return; }
+  if(!fecha){ msg.innerHTML = `<div class="msg err">Selecciona la fecha.</div>`; return; }
+  if(!monto || monto <= 0){ msg.innerHTML = `<div class="msg err">Ingresa un monto válido.</div>`; return; }
+
+  const pago = datosMonedaCaja('tmm', monto);
+  if(pago.error){ msg.innerHTML = `<div class="msg err">${pago.error}</div>`; return; }
+
+  const { data: cajaMatriz } = await sb.from('cajas').select('*').is('sede_id', null).single();
+  if(!cajaMatriz){ msg.innerHTML = `<div class="msg err">No se encontró la Caja Matriz.</div>`; return; }
+  if(tipo === 'entrega' && monto > Number(cajaMatriz.saldo_actual)){
+    msg.innerHTML = `<div class="msg err">No puedes entregar más de lo que hay en la Caja Matriz (${money(cajaMatriz.saldo_actual)}).</div>`; return;
+  }
+
+  let fotoUrl = null;
+  if(archivoFoto){
+    msg.innerHTML = `<div class="msg ok">Subiendo comprobante...</div>`;
+    try{ fotoUrl = await subirFoto(archivoFoto, 'comprobantes-terceros'); }
+    catch(err){ msg.innerHTML = `<div class="msg err">Error subiendo la foto: ${err.message}</div>`; return; }
+  }
+
+  const { error } = await sb.from('movimientos_tercero').insert({
+    tercero_id: terceroId, sede_id: null, tipo, fecha, monto,
+    moneda: pago.moneda, metodo_pago: pago.metodo, monto_original: pago.montoOriginal, tasa_cambio: pago.tasa,
+    motivo: motivo || null, foto_url: fotoUrl, afecta_caja: true, created_by: ESTADO.perfil.id
+  });
+  if(error){ msg.innerHTML = `<div class="msg err">Error: ${error.message}</div>`; return; }
+
+  const nombreTercero = ESTADO.terceros.find(t=>t.id===terceroId)?.nombre || 'tercero';
+  const tipoMovCaja = tipo === 'entrega' ? 'egreso_entrega_tercero' : 'ingreso_recibo_tercero';
+  await sb.from('movimientos_caja').insert({
+    caja_id: cajaMatriz.id, sede_id: null, tipo: tipoMovCaja, monto,
+    moneda: pago.moneda, metodo_pago: pago.metodo, monto_original: pago.montoOriginal, tasa_cambio: pago.tasa,
+    descripcion: tipo === 'entrega' ? `Entrega a ${nombreTercero}${motivo ? ' — ' + motivo : ''}` : `Recibido de ${nombreTercero}${motivo ? ' — ' + motivo : ''}`,
+    created_by: ESTADO.perfil.id
+  });
+  const nuevoSaldo = tipo === 'entrega' ? Number(cajaMatriz.saldo_actual) - monto : Number(cajaMatriz.saldo_actual) + monto;
+  await sb.from('cajas').update({ saldo_actual: nuevoSaldo }).eq('id', cajaMatriz.id);
+
+  renderCajaMatriz();
+}
+
+async function registrarGastoMatriz(){
+  const msg = document.getElementById('gasto-matriz-msg');
+  const tipo = document.getElementById('tipo-gasto-matriz').value;
+  const monto = parseFloat(document.getElementById('monto-gasto-matriz').value);
+  const desc = document.getElementById('desc-gasto-matriz').value.trim();
+
+  if(!monto || monto <= 0){ msg.innerHTML = `<div class="msg err">Ingresa un monto válido.</div>`; return; }
+
+  const pago = datosMonedaCaja('gtm', monto);
+  if(pago.error){ msg.innerHTML = `<div class="msg err">${pago.error}</div>`; return; }
+
+  const { data: gasto, error } = await sb.from('gastos').insert({
+    sede_id: null, tipo, monto, descripcion: desc, created_by: ESTADO.perfil.id
+  }).select().single();
+  if(error){ msg.innerHTML = `<div class="msg err">Error: ${error.message}</div>`; return; }
+
+  const { data: cajaMatriz } = await sb.from('cajas').select('*').is('sede_id', null).single();
+  if(cajaMatriz){
+    const tipoMovimiento = 'egreso_' + (tipo === 'pago_empleado' ? 'pago_empleado' : tipo);
+    await sb.from('movimientos_caja').insert({
+      caja_id: cajaMatriz.id, sede_id: null, tipo: tipoMovimiento, monto,
+      moneda: pago.moneda, metodo_pago: pago.metodo, monto_original: pago.montoOriginal, tasa_cambio: pago.tasa,
+      descripcion: desc || TIPOS_GASTO[tipo], referencia_id: gasto.id, created_by: ESTADO.perfil.id
+    });
+    await sb.from('cajas').update({ saldo_actual: Number(cajaMatriz.saldo_actual) - monto }).eq('id', cajaMatriz.id);
+  }
+  renderCajaMatriz();
 }
 
 /* =========================================================
@@ -1931,12 +2390,32 @@ async function calcularFinanzas(){
 
   const utilidad = ingresosPorVentas - costoMercancia - totalGastos;
 
+  // Traslados del período — solo informativo, no afecta caja ni utilidad (el costo ya se descuenta al vender, sin importar el origen)
+  const { data: trasladosRecibidos } = await sb.from('traslados_inventario')
+    .select('*, productos(nombre)')
+    .eq('sede_destino_id', ESTADO.sedeSeleccionada).eq('estado', 'aceptado')
+    .gte('resuelto_at', desde.toISOString()).lt('resuelto_at', hasta.toISOString());
+  const { data: trasladosEnviados } = await sb.from('traslados_inventario')
+    .select('*, productos(nombre)')
+    .eq('sede_origen_id', ESTADO.sedeSeleccionada).eq('estado', 'aceptado')
+    .gte('resuelto_at', desde.toISOString()).lt('resuelto_at', hasta.toISOString());
+  const valorTraslados = (lista) => (lista||[]).reduce((s,t)=>s + Number(t.cantidad) * (costoPorProducto[t.producto_id]||0), 0);
+
   cont.innerHTML = `
     <div class="kpis">
       <div class="kpi verde"><div class="label">Ingresos (ventas del período)</div><div class="valor">${money(ingresosPorVentas)}</div></div>
       <div class="kpi"><div class="label">Costo de mercancía vendida</div><div class="valor">${money(costoMercancia)}</div></div>
       <div class="kpi rojo"><div class="label">Gastos operativos</div><div class="valor">${money(totalGastos)}</div></div>
       <div class="kpi ${utilidad >= 0 ? 'verde' : 'rojo'}"><div class="label">Utilidad estimada</div><div class="valor">${money(utilidad)}</div></div>
+    </div>
+
+    <div class="card">
+      <h3>🔄 Traslados con otras sedes en el período (solo informativo)</h3>
+      <div class="stock" style="margin-bottom:10px;">Esto no afecta caja ni la utilidad de arriba — el costo de estas unidades ya se descuenta automáticamente en "Costo de mercancía vendida" el día que esta sede las venda. Es solo para que veas de dónde viene tu inventario.</div>
+      <div class="inline-2">
+        <div class="kpi"><div class="label">Unidades recibidas por traslado</div><div class="valor">${(trasladosRecibidos||[]).reduce((s,t)=>s+Number(t.cantidad),0)} <span style="font-size:13px; color:var(--carbon);">(${money(valorTraslados(trasladosRecibidos))} en costo)</span></div></div>
+        <div class="kpi"><div class="label">Unidades enviadas por traslado</div><div class="valor">${(trasladosEnviados||[]).reduce((s,t)=>s+Number(t.cantidad),0)} <span style="font-size:13px; color:var(--carbon);">(${money(valorTraslados(trasladosEnviados))} en costo)</span></div></div>
+      </div>
     </div>
 
     <div class="card">
@@ -2087,12 +2566,14 @@ function abrirModalAbono(cxcId, saldo){
     <div class="form-row"><label>Saldo pendiente actual</label><input type="text" value="${money(saldo)}" disabled></div>
     <div class="form-row"><label>Monto del abono</label><input type="number" id="monto-abono" min="0.01" max="${saldo}" step="0.01"></div>
     <div class="form-row"><label>Nota (opcional)</label><input type="text" id="nota-abono"></div>
+    ${bloqueMoneda('cxca')}
     <div class="acciones">
       <button class="btn secundario" onclick="cerrarModal()">Cancelar</button>
       <button class="btn" onclick="confirmarAbono('${cxcId}', ${saldo})">Registrar abono</button>
     </div>
   `;
   document.getElementById('modal-bg').classList.add('activo');
+  actualizarMetodosGenerico('cxca');
 }
 
 function cerrarModal(){ document.getElementById('modal-bg').classList.remove('activo'); }
@@ -2104,6 +2585,8 @@ async function confirmarAbono(cxcId, saldoActual){
   if(!monto || monto <= 0 || monto > saldoActual){
     msg.innerHTML = `<div class="msg err">Monto inválido.</div>`; return;
   }
+  const pago = datosMonedaCaja('cxca', monto);
+  if(pago.error){ msg.innerHTML = `<div class="msg err">${pago.error}</div>`; return; }
 
   await sb.from('abonos').insert({ cuenta_por_cobrar_id: cxcId, monto, nota, created_by: ESTADO.perfil.id });
 
@@ -2125,6 +2608,7 @@ async function confirmarAbono(cxcId, saldoActual){
   if(caja){
     await sb.from('movimientos_caja').insert({
       caja_id: caja.id, sede_id: ESTADO.sedeSeleccionada, tipo: 'ingreso_abono', monto,
+      moneda: pago.moneda, metodo_pago: pago.metodo, monto_original: pago.montoOriginal, tasa_cambio: pago.tasa,
       descripcion: nota || 'Abono a cuenta por cobrar', referencia_id: cxcId, created_by: ESTADO.perfil.id
     });
     await sb.from('cajas').update({ saldo_actual: Number(caja.saldo_actual) + monto }).eq('id', caja.id);
@@ -2244,12 +2728,15 @@ function abrirModalAbonoPagar(cxpId, saldo){
     <div class="form-row"><label>Saldo pendiente actual</label><input type="text" value="${money(saldo)}" disabled></div>
     <div class="form-row"><label>Monto del abono</label><input type="number" id="monto-abono-pagar" min="0.01" max="${saldo}" step="0.01"></div>
     <div class="form-row"><label>Nota (opcional)</label><input type="text" id="nota-abono-pagar"></div>
+    ${bloqueMoneda('cxpa')}
+    ${bloqueOrigenCaja('cxpa')}
     <div class="acciones">
       <button class="btn secundario" onclick="cerrarModal()">Cancelar</button>
       <button class="btn" onclick="confirmarAbonoPagar('${cxpId}', ${saldo})">Registrar abono</button>
     </div>
   `;
   document.getElementById('modal-bg').classList.add('activo');
+  actualizarMetodosGenerico('cxpa');
 }
 
 async function confirmarAbonoPagar(cxpId, saldoActual){
@@ -2259,6 +2746,8 @@ async function confirmarAbonoPagar(cxpId, saldoActual){
   if(!monto || monto <= 0 || monto > saldoActual){
     msg.innerHTML = `<div class="msg err">Monto inválido.</div>`; return;
   }
+  const pago = datosMonedaCaja('cxpa', monto);
+  if(pago.error){ msg.innerHTML = `<div class="msg err">${pago.error}</div>`; return; }
 
   await sb.from('abonos_por_pagar').insert({ cuenta_por_pagar_id: cxpId, monto, nota, created_by: ESTADO.perfil.id });
 
@@ -2276,10 +2765,11 @@ async function confirmarAbonoPagar(cxpId, saldoActual){
     }
   }
 
-  const { data: caja } = await sb.from('cajas').select('*').eq('sede_id', ESTADO.sedeSeleccionada).single();
+  const { caja, sede_id: sedeCajaId } = await obtenerCajaOrigen('cxpa');
   if(caja){
     await sb.from('movimientos_caja').insert({
-      caja_id: caja.id, sede_id: ESTADO.sedeSeleccionada, tipo: 'egreso_compra', monto,
+      caja_id: caja.id, sede_id: sedeCajaId, tipo: 'egreso_compra', monto,
+      moneda: pago.moneda, metodo_pago: pago.metodo, monto_original: pago.montoOriginal, tasa_cambio: pago.tasa,
       descripcion: nota || 'Abono a cuenta por pagar', referencia_id: cxpId, created_by: ESTADO.perfil.id
     });
     await sb.from('cajas').update({ saldo_actual: Number(caja.saldo_actual) - monto }).eq('id', caja.id);
@@ -2355,8 +2845,453 @@ async function guardarFilaInventario(productoId){
 }
 
 /* =========================================================
-   PRODUCTOS
+   TRASLADOS ENTRE SEDES
 ========================================================= */
+async function renderTraslados(){
+  const cont = document.getElementById('contenido-tab');
+  cont.innerHTML = `<div class="empty">Cargando...</div>`;
+  await cargarProductosYClientes();
+
+  const { data: pendientesRecibir } = await sb.from('traslados_inventario')
+    .select('*, productos(nombre)')
+    .eq('sede_destino_id', ESTADO.sedeSeleccionada).eq('estado', 'pendiente')
+    .order('created_at', {ascending:false});
+
+  const { data: enviados } = await sb.from('traslados_inventario')
+    .select('*, productos(nombre)')
+    .eq('sede_origen_id', ESTADO.sedeSeleccionada)
+    .order('created_at', {ascending:false}).limit(40);
+
+  const { data: recibidosHistorial } = await sb.from('traslados_inventario')
+    .select('*, productos(nombre)')
+    .eq('sede_destino_id', ESTADO.sedeSeleccionada).neq('estado', 'pendiente')
+    .order('created_at', {ascending:false}).limit(40);
+
+  const NOMBRE_ESTADO = { pendiente: 'Pendiente', aceptado: 'Aceptado', rechazado: 'Rechazado', cancelado: 'Cancelado' };
+  const badgeEstado = e => `<span class="badge ${e}">${NOMBRE_ESTADO[e]||e}</span>`;
+  const otrasSedes = ESTADO.sedes.filter(s=>s.id!==ESTADO.sedeSeleccionada);
+
+  cont.innerHTML = `
+    <div class="grid2">
+      <div class="card">
+        <h3>Nuevo traslado desde ${sedeNombre(ESTADO.sedeSeleccionada)}</h3>
+        <div id="traslado-msg"></div>
+        <div class="form-row buscador-resultados">
+          <label>Producto a trasladar</label>
+          <input type="text" id="buscar-producto-traslado" placeholder="Escribe para buscar..." oninput="buscarProductoTraslado(this.value)" onfocus="buscarProductoTraslado(this.value)" autocomplete="off">
+          <div class="buscador-lista" id="lista-productos-traslado" style="display:none;"></div>
+        </div>
+        <div id="producto-traslado-seleccionado" class="stock"></div>
+        <input type="hidden" id="producto-id-traslado">
+        <div class="inline-2">
+          <div class="form-row"><label>Cantidad a trasladar</label><input type="number" id="cantidad-traslado" min="1" step="1" value="1"></div>
+          <div class="form-row">
+            <label>Sede destino</label>
+            <select id="sede-destino-traslado">
+              ${otrasSedes.map(s=>`<option value="${s.id}">${s.nombre}</option>`).join('') || `<option value="">No hay otra sede</option>`}
+            </select>
+          </div>
+        </div>
+        <div class="form-row"><label>Nota (opcional)</label><input type="text" id="nota-traslado" placeholder="Ej: para exhibir en vitrina"></div>
+        <button class="btn" ${otrasSedes.length?'':'disabled'} onclick="enviarTraslado()">Enviar traslado</button>
+      </div>
+
+      <div class="card">
+        <h3>📥 Pendientes por confirmar en ${sedeNombre(ESTADO.sedeSeleccionada)}</h3>
+        <div class="stock" style="margin-bottom:10px;">Estos productos ya salieron de la otra sede. Confírmalos cuando físicamente lleguen aquí.</div>
+        <table>
+          <thead><tr><th>Producto</th><th>Cant.</th><th>Desde</th><th>Fecha</th><th></th></tr></thead>
+          <tbody>
+            ${(pendientesRecibir||[]).map(t=>`
+              <tr>
+                <td>${t.productos?.nombre||'—'}</td>
+                <td>${t.cantidad}</td>
+                <td>${sedeNombre(t.sede_origen_id)}</td>
+                <td>${fecha(t.created_at)}</td>
+                <td style="white-space:nowrap;">
+                  <button class="btn chico" onclick="aceptarTraslado('${t.id}')">✅ Aceptar</button>
+                  <button class="btn chico secundario" onclick="rechazarTraslado('${t.id}')">✖ Rechazar</button>
+                </td>
+              </tr>
+            `).join('') || `<tr><td colspan="5" class="empty">Sin traslados pendientes</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>📤 Traslados que envié desde ${sedeNombre(ESTADO.sedeSeleccionada)}</h3>
+      <table>
+        <thead><tr><th>Producto</th><th>Cant.</th><th>Hacia</th><th>Fecha</th><th>Estado</th><th></th></tr></thead>
+        <tbody>
+          ${(enviados||[]).map(t=>`
+            <tr>
+              <td>${t.productos?.nombre||'—'}</td>
+              <td>${t.cantidad}</td>
+              <td>${sedeNombre(t.sede_destino_id)}</td>
+              <td>${fecha(t.created_at)}</td>
+              <td>${badgeEstado(t.estado)}</td>
+              <td>${t.estado==='pendiente' ? `<button class="btn chico secundario" onclick="cancelarTraslado('${t.id}')">Cancelar</button>` : ''}</td>
+            </tr>
+          `).join('') || `<tr><td colspan="6" class="empty">No has enviado traslados todavía</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>Historial de traslados recibidos en ${sedeNombre(ESTADO.sedeSeleccionada)}</h3>
+      <table>
+        <thead><tr><th>Producto</th><th>Cant.</th><th>Desde</th><th>Fecha</th><th>Estado</th></tr></thead>
+        <tbody>
+          ${(recibidosHistorial||[]).map(t=>`
+            <tr>
+              <td>${t.productos?.nombre||'—'}</td>
+              <td>${t.cantidad}</td>
+              <td>${sedeNombre(t.sede_origen_id)}</td>
+              <td>${fecha(t.resuelto_at||t.created_at)}</td>
+              <td>${badgeEstado(t.estado)}</td>
+            </tr>
+          `).join('') || `<tr><td colspan="5" class="empty">Sin historial todavía</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function buscarProductoTraslado(txt){
+  const lista = document.getElementById('lista-productos-traslado');
+  const t = txt.toLowerCase().trim();
+  let results;
+  if(!t){
+    results = ESTADO.productos
+      .filter(p => (ESTADO.inventarioSede[p.id] ?? 0) > 0)
+      .sort((a,b) => a.nombre.localeCompare(b.nombre))
+      .slice(0, 30);
+  } else {
+    results = ESTADO.productos.filter(p =>
+      p.nombre.toLowerCase().includes(t) || (p.sku||'').toLowerCase().includes(t)
+    ).slice(0,15);
+  }
+  if(!results.length){ lista.innerHTML = `<div>Sin productos con stock en esta sede.</div>`; lista.style.display='block'; return; }
+  lista.innerHTML = results.map(p => `
+    <div onclick="seleccionarProductoTraslado('${p.id}')">
+      ${p.nombre}
+      <div class="stock">Stock en esta sede: ${ESTADO.inventarioSede[p.id] ?? 0}</div>
+    </div>
+  `).join('');
+  lista.style.display = 'block';
+}
+
+function seleccionarProductoTraslado(productoId){
+  const producto = ESTADO.productos.find(p=>p.id===productoId);
+  if(!producto) return;
+  document.getElementById('producto-id-traslado').value = productoId;
+  document.getElementById('buscar-producto-traslado').value = producto.nombre;
+  document.getElementById('lista-productos-traslado').style.display = 'none';
+  document.getElementById('producto-traslado-seleccionado').textContent = `Stock disponible en esta sede: ${ESTADO.inventarioSede[productoId] ?? 0}`;
+  document.getElementById('cantidad-traslado').max = ESTADO.inventarioSede[productoId] ?? 0;
+}
+
+async function enviarTraslado(){
+  const msg = document.getElementById('traslado-msg');
+  const productoId = document.getElementById('producto-id-traslado').value;
+  const cantidad = parseInt(document.getElementById('cantidad-traslado').value);
+  const sedeDestino = document.getElementById('sede-destino-traslado').value;
+  const nota = document.getElementById('nota-traslado').value.trim();
+
+  if(!productoId){ msg.innerHTML = `<div class="msg err">Selecciona un producto.</div>`; return; }
+  if(!cantidad || cantidad <= 0){ msg.innerHTML = `<div class="msg err">Ingresa una cantidad válida.</div>`; return; }
+  if(!sedeDestino){ msg.innerHTML = `<div class="msg err">Selecciona la sede destino.</div>`; return; }
+
+  const stockActual = ESTADO.inventarioSede[productoId] ?? 0;
+  if(cantidad > stockActual){ msg.innerHTML = `<div class="msg err">No hay suficiente stock en esta sede (disponible: ${stockActual}).</div>`; return; }
+
+  const { data: traslado, error } = await sb.from('traslados_inventario').insert({
+    producto_id: productoId, cantidad, sede_origen_id: ESTADO.sedeSeleccionada, sede_destino_id: sedeDestino,
+    nota: nota || null, created_by: ESTADO.perfil.id
+  }).select().single();
+  if(error){ msg.innerHTML = `<div class="msg err">Error: ${error.message}</div>`; return; }
+
+  // Se descuenta de inmediato: ya salió físicamente y queda en tránsito hasta que la sede destino confirme
+  await sb.from('inventario').update({ cantidad: stockActual - cantidad, updated_at: new Date().toISOString() })
+    .eq('sede_id', ESTADO.sedeSeleccionada).eq('producto_id', productoId);
+  await sb.from('movimientos_inventario').insert({
+    sede_id: ESTADO.sedeSeleccionada, producto_id: productoId, tipo: 'traslado', cantidad,
+    nota: `Salida por traslado a ${sedeNombre(sedeDestino)}${nota ? ' — ' + nota : ''} (pendiente de confirmación)`,
+    referencia_id: traslado.id, created_by: ESTADO.perfil.id
+  });
+
+  msg.innerHTML = `<div class="msg ok">Traslado enviado. Queda pendiente de que ${sedeNombre(sedeDestino)} lo confirme.</div>`;
+  renderTraslados();
+}
+
+async function aceptarTraslado(trasladoId){
+  const { data: traslado } = await sb.from('traslados_inventario').select('*').eq('id', trasladoId).single();
+  if(!traslado || traslado.estado !== 'pendiente') return;
+
+  const { data: invRow } = await sb.from('inventario').select('*')
+    .eq('sede_id', traslado.sede_destino_id).eq('producto_id', traslado.producto_id).maybeSingle();
+  if(invRow){
+    await sb.from('inventario').update({ cantidad: Number(invRow.cantidad) + Number(traslado.cantidad), updated_at: new Date().toISOString() }).eq('id', invRow.id);
+  } else {
+    await sb.from('inventario').insert({ sede_id: traslado.sede_destino_id, producto_id: traslado.producto_id, cantidad: traslado.cantidad });
+  }
+  await sb.from('movimientos_inventario').insert({
+    sede_id: traslado.sede_destino_id, producto_id: traslado.producto_id, tipo: 'traslado', cantidad: traslado.cantidad,
+    nota: `Entrada por traslado desde ${sedeNombre(traslado.sede_origen_id)}`, referencia_id: traslado.id, created_by: ESTADO.perfil.id
+  });
+  await sb.from('traslados_inventario').update({
+    estado: 'aceptado', resuelto_por: ESTADO.perfil.id, resuelto_at: new Date().toISOString()
+  }).eq('id', trasladoId);
+
+  renderTraslados();
+}
+
+async function rechazarTraslado(trasladoId){
+  await resolverTrasladoConDevolucion(trasladoId, 'rechazado');
+}
+async function cancelarTraslado(trasladoId){
+  await resolverTrasladoConDevolucion(trasladoId, 'cancelado');
+}
+
+async function resolverTrasladoConDevolucion(trasladoId, nuevoEstado){
+  const { data: traslado } = await sb.from('traslados_inventario').select('*').eq('id', trasladoId).single();
+  if(!traslado || traslado.estado !== 'pendiente') return;
+
+  // Devolver el stock a la sede de origen
+  const { data: invRow } = await sb.from('inventario').select('*')
+    .eq('sede_id', traslado.sede_origen_id).eq('producto_id', traslado.producto_id).maybeSingle();
+  if(invRow){
+    await sb.from('inventario').update({ cantidad: Number(invRow.cantidad) + Number(traslado.cantidad), updated_at: new Date().toISOString() }).eq('id', invRow.id);
+  } else {
+    await sb.from('inventario').insert({ sede_id: traslado.sede_origen_id, producto_id: traslado.producto_id, cantidad: traslado.cantidad });
+  }
+  await sb.from('movimientos_inventario').insert({
+    sede_id: traslado.sede_origen_id, producto_id: traslado.producto_id, tipo: 'traslado', cantidad: traslado.cantidad,
+    nota: nuevoEstado === 'rechazado'
+      ? `Traslado rechazado por ${sedeNombre(traslado.sede_destino_id)} — stock devuelto`
+      : `Traslado cancelado — stock devuelto`,
+    referencia_id: traslado.id, created_by: ESTADO.perfil.id
+  });
+  await sb.from('traslados_inventario').update({
+    estado: nuevoEstado, resuelto_por: ESTADO.perfil.id, resuelto_at: new Date().toISOString()
+  }).eq('id', trasladoId);
+
+  renderTraslados();
+}
+
+/* =========================================================
+   TERCEROS DE CONFIANZA (casa de cambio / gestor de pagos informal)
+========================================================= */
+let TERCERO_SELECCIONADO = null;
+
+async function renderTerceros(){
+  const cont = document.getElementById('contenido-tab');
+  cont.innerHTML = `<div class="empty">Cargando...</div>`;
+
+  const { data: terceros } = await sb.from('terceros_confianza').select('*').order('nombre');
+  ESTADO.terceros = terceros || [];
+
+  if(!TERCERO_SELECCIONADO && ESTADO.terceros.length) TERCERO_SELECCIONADO = ESTADO.terceros[0].id;
+
+  cont.innerHTML = `
+    <div class="card">
+      <h3>¿Con quién es la cuenta?</h3>
+      <div class="stock" style="margin-bottom:10px;">Para llevar el control de dinero que le entregas a alguien de confianza (para que haga pagos/transferencias por ti) y lo que te devuelve, hasta que cuadren cuentas.</div>
+      <div class="inline-2">
+        <div class="form-row" style="margin-bottom:0;">
+          <label>Tercero</label>
+          <select id="tercero-select" onchange="cambiarTerceroSeleccionado(this.value)">
+            ${ESTADO.terceros.map(t=>`<option value="${t.id}" ${t.id===TERCERO_SELECCIONADO?'selected':''}>${t.nombre}</option>`).join('') || `<option value="">Sin terceros creados todavía</option>`}
+          </select>
+        </div>
+        <div class="form-row" style="margin-bottom:0;">
+          <label>O crear uno nuevo</label>
+          <div style="display:flex; gap:8px;">
+            <input type="text" id="nuevo-tercero-nombre" placeholder="Nombre">
+            <button class="btn chico secundario" onclick="crearTercero()" style="white-space:nowrap;">+ Crear</button>
+          </div>
+        </div>
+      </div>
+      <div id="tercero-msg"></div>
+    </div>
+
+    <div id="tercero-detalle"></div>
+  `;
+
+  if(TERCERO_SELECCIONADO) abrirCuentaTercero(TERCERO_SELECCIONADO);
+  else document.getElementById('tercero-detalle').innerHTML = `<div class="empty">Crea un tercero para empezar a llevar la cuenta.</div>`;
+}
+
+function cambiarTerceroSeleccionado(id){
+  TERCERO_SELECCIONADO = id;
+  abrirCuentaTercero(id);
+}
+
+async function crearTercero(){
+  const msg = document.getElementById('tercero-msg');
+  const nombre = document.getElementById('nuevo-tercero-nombre').value.trim();
+  if(!nombre){ msg.innerHTML = `<div class="msg err">Ponle un nombre.</div>`; return; }
+
+  const { data, error } = await sb.from('terceros_confianza').insert({ nombre, created_by: ESTADO.perfil.id }).select().single();
+  if(error){ msg.innerHTML = `<div class="msg err">Error: ${error.message}</div>`; return; }
+
+  TERCERO_SELECCIONADO = data.id;
+  renderTerceros();
+}
+
+async function abrirCuentaTercero(terceroId){
+  const cont = document.getElementById('tercero-detalle');
+  cont.innerHTML = `<div class="empty">Cargando...</div>`;
+
+  const { data: movimientos } = await sb.from('movimientos_tercero')
+    .select('*').eq('tercero_id', terceroId).eq('sede_id', ESTADO.sedeSeleccionada)
+    .order('fecha', {ascending:false}).order('created_at', {ascending:false});
+
+  const entregado = (movimientos||[]).filter(m=>m.tipo==='entrega').reduce((s,m)=>s+Number(m.monto),0);
+  const recibido = (movimientos||[]).filter(m=>m.tipo==='recibo').reduce((s,m)=>s+Number(m.monto),0);
+  const saldo = entregado - recibido; // positivo = él te debe; negativo = tú le debes
+
+  const grupos = {};
+  for(const m of (movimientos||[])){
+    const clave = m.moneda + '|' + m.metodo_pago;
+    if(!grupos[clave]) grupos[clave] = { moneda: m.moneda, metodo: m.metodo_pago, entregado: 0, recibido: 0 };
+    const montoOriginal = Number(m.monto_original ?? m.monto);
+    if(m.tipo==='entrega') grupos[clave].entregado += montoOriginal; else grupos[clave].recibido += montoOriginal;
+  }
+  const gruposOrdenados = Object.values(grupos).sort((a,b)=>(ORDEN_MONEDA[a.moneda]-ORDEN_MONEDA[b.moneda]) || a.metodo.localeCompare(b.metodo));
+
+  const nombreTercero = ESTADO.terceros.find(t=>t.id===terceroId)?.nombre || '';
+
+  cont.innerHTML = `
+    <div class="kpis">
+      <div class="kpi"><div class="label">Le has entregado (histórico, ${sedeNombre(ESTADO.sedeSeleccionada)})</div><div class="valor">${money(entregado)}</div></div>
+      <div class="kpi"><div class="label">Te ha entregado (histórico)</div><div class="valor">${money(recibido)}</div></div>
+      <div class="kpi ${saldo > 0 ? 'rojo' : (saldo < 0 ? 'verde' : '')}">
+        <div class="label">Saldo</div>
+        <div class="valor">${saldo === 0 ? 'Cuadrado' : (saldo > 0 ? `${nombreTercero} te debe ${money(saldo)}` : `Le debes ${money(Math.abs(saldo))}`)}</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>💱 Por moneda y forma de entrega</h3>
+      <table>
+        <thead><tr><th>Moneda</th><th>Forma</th><th>Entregado</th><th>Recibido</th><th>Neto</th></tr></thead>
+        <tbody>
+          ${gruposOrdenados.map(g=>{
+            const neto = g.entregado - g.recibido;
+            return `<tr>
+              <td>${g.moneda}</td>
+              <td>${NOMBRES_METODO_ICONO[g.metodo]||''} ${g.metodo}</td>
+              <td>${fmtMoneda(g.moneda, g.entregado)}</td>
+              <td>${fmtMoneda(g.moneda, g.recibido)}</td>
+              <td style="font-weight:600;">${fmtMoneda(g.moneda, neto)}</td>
+            </tr>`;
+          }).join('') || `<tr><td colspan="5" class="empty">Sin movimientos todavía</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>Registrar movimiento con ${nombreTercero}</h3>
+      <div id="mt-msg"></div>
+      <div class="form-row">
+        <label>¿Qué pasó?</label>
+        <select id="mt-tipo">
+          <option value="entrega">Yo le entregué dinero a él</option>
+          <option value="recibo">Él me entregó dinero a mí</option>
+        </select>
+      </div>
+      <div class="inline-2">
+        <div class="form-row" style="margin-bottom:0;"><label>Fecha</label><input type="date" id="mt-fecha" value="${new Date().toISOString().slice(0,10)}"></div>
+        <div class="form-row" style="margin-bottom:0;"><label>Monto (equivalente USD)</label><input type="number" id="mt-monto" min="0.01" step="0.01" placeholder="0.00"></div>
+      </div>
+      <div class="form-row" style="margin-top:6px;"><label>¿En qué moneda/forma se hizo la entrega?</label></div>
+      ${bloqueMoneda('mt')}
+      <div class="form-row"><label>Motivo (opcional)</label><input type="text" id="mt-motivo" placeholder="Ej: pago a proveedor XYZ"></div>
+      <div class="form-row"><label>Foto del comprobante (opcional)</label><input type="file" id="mt-foto" accept="image/*"></div>
+      <div class="form-row" style="margin-top:4px;">
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin-bottom:0;">
+          <input type="checkbox" id="mt-afecta-caja" style="width:auto;">
+          Este dinero salió/entró físicamente de la caja de ${sedeNombre(ESTADO.sedeSeleccionada)} (déjalo sin marcar si es de otra cuenta/gestión que no pasó por esta caja)
+        </label>
+      </div>
+      <button class="btn" onclick="registrarMovimientoTercero('${terceroId}')">Registrar</button>
+    </div>
+
+    <div class="card">
+      <h3>Historial</h3>
+      <table>
+        <thead><tr><th>Fecha</th><th>Tipo</th><th>Monto</th><th>Moneda/Forma</th><th>Motivo</th><th>Caja</th><th>Comprobante</th></tr></thead>
+        <tbody>
+          ${(movimientos||[]).map(m=>`
+            <tr>
+              <td>${m.fecha}</td>
+              <td>${m.tipo==='entrega' ? 'Le entregué' : 'Me entregó'}</td>
+              <td style="color:${m.tipo==='entrega'?'var(--rojo)':'var(--verde)'}">${money(m.monto)}</td>
+              <td>${m.moneda}${m.moneda!=='USD' ? ` (${fmtMoneda(m.moneda, m.monto_original)})` : ''} — ${m.metodo_pago}</td>
+              <td>${m.motivo||'—'}</td>
+              <td>${m.afecta_caja ? '💰 Sí' : '—'}</td>
+              <td>${m.foto_url ? `<a href="${m.foto_url}" target="_blank">Ver foto</a>` : '—'}</td>
+            </tr>
+          `).join('') || `<tr><td colspan="7" class="empty">Sin movimientos todavía</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+  `;
+  actualizarMetodosGenerico('mt');
+}
+
+async function registrarMovimientoTercero(terceroId){
+  const msg = document.getElementById('mt-msg');
+  const tipo = document.getElementById('mt-tipo').value;
+  const fecha = document.getElementById('mt-fecha').value;
+  const monto = parseFloat(document.getElementById('mt-monto').value);
+  const motivo = document.getElementById('mt-motivo').value.trim();
+  const archivoFoto = document.getElementById('mt-foto').files[0];
+  const afectaCaja = document.getElementById('mt-afecta-caja').checked;
+
+  if(!fecha){ msg.innerHTML = `<div class="msg err">Selecciona la fecha.</div>`; return; }
+  if(!monto || monto <= 0){ msg.innerHTML = `<div class="msg err">Ingresa un monto válido.</div>`; return; }
+
+  const pago = datosMonedaCaja('mt', monto);
+  if(pago.error){ msg.innerHTML = `<div class="msg err">${pago.error}</div>`; return; }
+
+  let fotoUrl = null;
+  if(archivoFoto){
+    msg.innerHTML = `<div class="msg ok">Subiendo comprobante...</div>`;
+    try{ fotoUrl = await subirFoto(archivoFoto, 'comprobantes-terceros'); }
+    catch(err){ msg.innerHTML = `<div class="msg err">Error subiendo la foto: ${err.message}</div>`; return; }
+  }
+
+  const { error } = await sb.from('movimientos_tercero').insert({
+    tercero_id: terceroId, sede_id: ESTADO.sedeSeleccionada, tipo, fecha, monto,
+    moneda: pago.moneda, metodo_pago: pago.metodo, monto_original: pago.montoOriginal, tasa_cambio: pago.tasa,
+    motivo: motivo || null, foto_url: fotoUrl, afecta_caja: afectaCaja, created_by: ESTADO.perfil.id
+  });
+  if(error){ msg.innerHTML = `<div class="msg err">Error: ${error.message}</div>`; return; }
+
+  // Solo si se marcó la casilla: reflejar en la caja de esta sede (la mayoría de las cuentas con terceros no pasan por caja)
+  if(afectaCaja){
+    const { data: caja } = await sb.from('cajas').select('*').eq('sede_id', ESTADO.sedeSeleccionada).single();
+    if(caja){
+      const tipoMovCaja = tipo === 'entrega' ? 'egreso_entrega_tercero' : 'ingreso_recibo_tercero';
+      const nombreTercero = ESTADO.terceros.find(t=>t.id===terceroId)?.nombre || 'tercero';
+      await sb.from('movimientos_caja').insert({
+        caja_id: caja.id, sede_id: ESTADO.sedeSeleccionada, tipo: tipoMovCaja, monto,
+        moneda: pago.moneda, metodo_pago: pago.metodo, monto_original: pago.montoOriginal, tasa_cambio: pago.tasa,
+        descripcion: tipo === 'entrega' ? `Entrega a ${nombreTercero}${motivo ? ' — ' + motivo : ''}` : `Recibido de ${nombreTercero}${motivo ? ' — ' + motivo : ''}`,
+        created_by: ESTADO.perfil.id
+      });
+      const nuevoSaldo = tipo === 'entrega' ? Number(caja.saldo_actual) - monto : Number(caja.saldo_actual) + monto;
+      await sb.from('cajas').update({ saldo_actual: nuevoSaldo }).eq('id', caja.id);
+    }
+  }
+
+  abrirCuentaTercero(terceroId);
+}
+
+
 async function renderProductos(){
   const cont = document.getElementById('contenido-tab');
   cont.innerHTML = `<div class="empty">Cargando...</div>`;
@@ -2664,15 +3599,57 @@ async function renderClientes(){
       </div>
       <div class="card">
         <h3>Clientes (${(clientes||[]).length})</h3>
+        <div class="form-row"><input type="text" id="cl-buscar" placeholder="Buscar cliente por nombre, cédula o teléfono..." oninput="filtrarClientesTabla(this.value)"></div>
         <table>
-          <thead><tr><th>Nombre</th><th>Cédula</th><th>Teléfono</th></tr></thead>
-          <tbody>
-            ${(clientes||[]).map(c=>`<tr><td>${c.nombre_completo}</td><td>${c.cedula||'—'}</td><td>${c.telefono||'—'}</td></tr>`).join('') || `<tr><td colspan="3" class="empty">Sin clientes aún</td></tr>`}
+          <thead><tr><th>Nombre</th><th>Cédula</th><th>Teléfono</th><th></th></tr></thead>
+          <tbody id="tbody-clientes">
+            ${(clientes||[]).map(c=>`<tr data-busq="${(c.nombre_completo+' '+(c.cedula||'')+' '+(c.telefono||'')).toLowerCase()}"><td>${c.nombre_completo}</td><td>${c.cedula||'—'}</td><td>${c.telefono||'—'}</td><td><button class="btn chico secundario" onclick='abrirEditarCliente(${JSON.stringify(c)})'>Editar</button></td></tr>`).join('') || `<tr><td colspan="4" class="empty">Sin clientes aún</td></tr>`}
           </tbody>
         </table>
       </div>
     </div>
   `;
+}
+
+function filtrarClientesTabla(texto){
+  const t = texto.trim().toLowerCase();
+  document.querySelectorAll('#tbody-clientes tr[data-busq]').forEach(tr=>{
+    tr.style.display = tr.dataset.busq.includes(t) ? '' : 'none';
+  });
+}
+
+function abrirEditarCliente(c){
+  document.getElementById('modal-contenido').innerHTML = `
+    <h3>Editar cliente</h3>
+    <div id="modal-cliente-msg"></div>
+    <div class="form-row"><label>Nombre completo</label><input type="text" id="ecl-nombre" value="${(c.nombre_completo||'').replace(/"/g,'&quot;')}"></div>
+    <div class="inline-2">
+      <div class="form-row"><label>Cédula</label><input type="text" id="ecl-cedula" value="${(c.cedula||'').replace(/"/g,'&quot;')}"></div>
+      <div class="form-row"><label>Teléfono</label><input type="text" id="ecl-telefono" value="${(c.telefono||'').replace(/"/g,'&quot;')}"></div>
+    </div>
+    <div class="form-row"><label>Dirección</label><input type="text" id="ecl-direccion" value="${(c.direccion||'').replace(/"/g,'&quot;')}"></div>
+    <div class="acciones">
+      <button class="btn secundario" onclick="cerrarModal()">Cancelar</button>
+      <button class="btn" onclick="guardarEdicionCliente('${c.id}')">Guardar cambios</button>
+    </div>
+  `;
+  document.getElementById('modal-bg').classList.add('activo');
+}
+
+async function guardarEdicionCliente(clienteId){
+  const msg = document.getElementById('modal-cliente-msg');
+  const nombre_completo = document.getElementById('ecl-nombre').value.trim();
+  const cedula = document.getElementById('ecl-cedula').value.trim() || null;
+  const telefono = document.getElementById('ecl-telefono').value.trim() || null;
+  const direccion = document.getElementById('ecl-direccion').value.trim() || null;
+
+  if(!nombre_completo){ msg.innerHTML = `<div class="msg err">El nombre es obligatorio.</div>`; return; }
+
+  const { error } = await sb.from('clientes').update({ nombre_completo, cedula, telefono, direccion }).eq('id', clienteId);
+  if(error){ msg.innerHTML = `<div class="msg err">Error: ${error.message}</div>`; return; }
+  cerrarModal();
+  await cargarProductosYClientes();
+  renderClientes();
 }
 
 async function crearCliente(){
