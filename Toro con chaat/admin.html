@@ -364,15 +364,7 @@ function mostrarApp(){
     ? 'Administrador general'
     : (sedeActual ? `${sedeActual.nombre}${sedeActual.razon_social ? `<br><span style="color:var(--carbon); font-size:11px;">${sedeActual.razon_social}</span>` : ''}` : '');
 
-  const wrap = document.getElementById('sede-selector-wrap');
-  if(ESTADO.perfil.rol === 'admin_general' && ESTADO.sedes.length){
-    wrap.style.display = 'flex';
-    const sel = document.getElementById('sede-selector');
-    sel.innerHTML = ESTADO.sedes.map(s => `<option value="${s.id}">${s.nombre}</option>`).join('');
-    sel.value = ESTADO.sedeSeleccionada;
-  } else {
-    wrap.style.display = 'none';
-  }
+  actualizarVisibilidadSelectorSede();
 
   document.getElementById('nav-caja-matriz').style.display = ESTADO.perfil.rol === 'admin_general' ? 'block' : 'none';
 
@@ -397,6 +389,19 @@ function cerrarMenuMovil(){
   document.getElementById('overlay-movil').classList.remove('activo');
 }
 
+function actualizarVisibilidadSelectorSede(){
+  const wrap = document.getElementById('sede-selector-wrap');
+  // La Caja Matriz no pertenece a ninguna sede, así que no tiene sentido mostrar el selector ahí
+  if(ESTADO.perfil.rol === 'admin_general' && ESTADO.sedes.length && ESTADO.tabActual !== 'cajamatriz'){
+    wrap.style.display = 'flex';
+    const sel = document.getElementById('sede-selector');
+    sel.innerHTML = ESTADO.sedes.map(s => `<option value="${s.id}">${s.nombre}</option>`).join('');
+    sel.value = ESTADO.sedeSeleccionada;
+  } else {
+    wrap.style.display = 'none';
+  }
+}
+
 /* =========================================================
    NAVEGACIÓN DE TABS
 ========================================================= */
@@ -411,6 +416,7 @@ function cambiarTab(tab){
     b.classList.toggle('activo', b.dataset.tab === tab);
   });
   document.getElementById('titulo-tab').textContent = TITULOS[tab];
+  actualizarVisibilidadSelectorSede();
   cerrarMenuMovil();
 
   const render = {
@@ -3297,8 +3303,18 @@ async function renderProductos(){
   cont.innerHTML = `<div class="empty">Cargando...</div>`;
 
   const { data: categorias } = await sb.from('categorias').select('*').order('nombre');
-  const { data: productos } = await sb.from('productos').select('*, categorias(nombre)').order('nombre');
+  const { data: productos } = await sb.from('productos').select('*, categorias(id, nombre)').order('nombre');
   const { data: config } = await sb.from('tienda_config').select('*').single();
+
+  ESTADO.catalogoProductos = productos || [];
+  ESTADO.catalogoCategorias = categorias || [];
+  if(ESTADO.filtroCategoriaProductos === undefined) ESTADO.filtroCategoriaProductos = 'todos';
+
+  const conteoPorCategoria = {};
+  (productos||[]).forEach(p=>{
+    const key = p.categoria_id || 'sin';
+    conteoPorCategoria[key] = (conteoPorCategoria[key]||0) + 1;
+  });
 
   cont.innerHTML = `
     <div class="card">
@@ -3343,19 +3359,51 @@ async function renderProductos(){
 
       <div class="card">
         <h3>Catálogo (${(productos||[]).length})</h3>
+        <div class="tabs-sub" id="filtro-categoria-productos">
+          <button class="${ESTADO.filtroCategoriaProductos==='todos'?'activo':''}" onclick="filtrarCatalogoPorCategoria('todos')">Todos (${(productos||[]).length})</button>
+          ${(categorias||[]).map(c=>`<button class="${ESTADO.filtroCategoriaProductos===c.id?'activo':''}" onclick="filtrarCatalogoPorCategoria('${c.id}')">${c.nombre} (${conteoPorCategoria[c.id]||0})</button>`).join('')}
+          ${conteoPorCategoria['sin'] ? `<button class="${ESTADO.filtroCategoriaProductos==='sin'?'activo':''}" onclick="filtrarCatalogoPorCategoria('sin')">Sin categoría (${conteoPorCategoria['sin']})</button>` : ''}
+        </div>
+        <div class="form-row" style="margin-top:10px;"><input type="text" id="buscar-catalogo" placeholder="Buscar por nombre o código..." oninput="filtrarCatalogoPorTexto(this.value)"></div>
         <table>
-          <thead><tr><th>Nombre</th><th>Categoría</th><th>Precio</th><th></th></tr></thead>
-          <tbody>
-            ${(productos||[]).map(p=>`
-              <tr><td>${p.nombre}</td><td>${p.categorias?.nombre||'—'}</td><td>${money(p.precio)}</td><td><button class="btn chico secundario" onclick="abrirEditarProducto('${p.id}')">✏️ Editar</button></td></tr>
-            `).join('') || `<tr><td colspan="4" class="empty">Sin productos aún</td></tr>`}
-          </tbody>
+          <thead><tr><th>Código</th><th>Nombre</th><th>Categoría</th><th>Precio</th><th></th></tr></thead>
+          <tbody id="tbody-catalogo-productos"></tbody>
         </table>
       </div>
     </div>
 
     <div id="editar-producto-panel"></div>
   `;
+  renderTablaCatalogoProductos();
+}
+
+function filtrarCatalogoPorCategoria(categoriaId){
+  ESTADO.filtroCategoriaProductos = categoriaId;
+  renderProductos();
+}
+
+function filtrarCatalogoPorTexto(texto){
+  renderTablaCatalogoProductos(texto);
+}
+
+function renderTablaCatalogoProductos(texto){
+  const tbody = document.getElementById('tbody-catalogo-productos');
+  if(!tbody) return;
+  const t = (texto||document.getElementById('buscar-catalogo')?.value||'').toLowerCase().trim();
+  const filtro = ESTADO.filtroCategoriaProductos;
+
+  const filtrados = (ESTADO.catalogoProductos||[]).filter(p=>{
+    if(filtro && filtro !== 'todos'){
+      const catKey = p.categoria_id || 'sin';
+      if(catKey !== filtro) return false;
+    }
+    if(t && !(p.nombre.toLowerCase().includes(t) || (p.sku||'').toLowerCase().includes(t))) return false;
+    return true;
+  });
+
+  tbody.innerHTML = filtrados.map(p=>`
+    <tr><td>${p.sku||'—'}</td><td>${p.nombre}</td><td>${p.categorias?.nombre||'—'}</td><td>${money(p.precio)}</td><td><button class="btn chico secundario" onclick="abrirEditarProducto('${p.id}')">✏️ Editar</button></td></tr>
+  `).join('') || `<tr><td colspan="5" class="empty">Sin productos que coincidan</td></tr>`;
 }
 
 async function subirLogoTienda(input){
