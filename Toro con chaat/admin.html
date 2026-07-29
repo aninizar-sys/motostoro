@@ -4120,7 +4120,7 @@ async function renderProductos(){
         </div>
         <div class="form-row" style="margin-top:10px;"><input type="text" id="buscar-catalogo" placeholder="Buscar por nombre o código..." oninput="filtrarCatalogoPorTexto(this.value)"></div>
         <table>
-          <thead><tr><th>Código</th><th>Nombre</th><th>Categoría</th><th>Precio</th><th></th></tr></thead>
+          <thead><tr><th>Código</th><th>Nombre</th><th>Categoría</th><th>Precio</th><th>Tienda</th><th></th></tr></thead>
           <tbody id="tbody-catalogo-productos"></tbody>
         </table>
       </div>
@@ -4156,8 +4156,17 @@ function renderTablaCatalogoProductos(texto){
   });
 
   tbody.innerHTML = filtrados.map(p=>`
-    <tr><td>${p.sku||'—'}</td><td>${p.nombre}</td><td>${p.categorias?.nombre||'—'}</td><td>${money(p.precio)}</td><td><button class="btn chico secundario" onclick="abrirEditarProducto('${p.id}')">✏️ Editar</button></td></tr>
-  `).join('') || `<tr><td colspan="5" class="empty">Sin productos que coincidan</td></tr>`;
+    <tr><td>${p.sku||'—'}</td><td>${p.nombre}</td><td>${p.categorias?.nombre||'—'}</td><td>${money(p.precio)}</td>
+      <td><button class="btn chico ${p.mostrar_en_tienda_publica ? 'secundario' : ''}" onclick="alternarVisibilidadTienda('${p.id}', ${!p.mostrar_en_tienda_publica})">${p.mostrar_en_tienda_publica ? '👁️ Visible' : '🚫 Oculto'}</button></td>
+      <td><button class="btn chico secundario" onclick="abrirEditarProducto('${p.id}')">✏️ Editar</button></td></tr>
+  `).join('') || `<tr><td colspan="6" class="empty">Sin productos que coincidan</td></tr>`;
+}
+
+async function alternarVisibilidadTienda(productoId, nuevoValor){
+  await sb.from('productos').update({ mostrar_en_tienda_publica: nuevoValor }).eq('id', productoId);
+  const p = ESTADO.catalogoProductos.find(x=>x.id===productoId);
+  if(p) p.mostrar_en_tienda_publica = nuevoValor;
+  renderTablaCatalogoProductos();
 }
 
 async function subirLogoTienda(input){
@@ -4238,6 +4247,13 @@ async function abrirEditarProducto(productoId){
       <div class="form-row"><label>SKU / código</label><input type="text" id="ep-sku" value="${producto.sku||''}"></div>
       <div class="form-row"><label>Descripción</label><input type="text" id="ep-descripcion" value="${(producto.descripcion||'').replace(/"/g,'&quot;')}"></div>
       <div class="form-row"><label>Etiquetas (separadas por coma)</label><input type="text" id="ep-etiquetas" value="${(producto.etiquetas||[]).join(', ')}" placeholder="Automática, Sincrónica, Alta cilindrada..."></div>
+      <div class="form-row" style="margin-top:4px;">
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin-bottom:0;">
+          <input type="checkbox" id="ep-mostrar-tienda" style="width:auto;" ${producto.mostrar_en_tienda_publica ? 'checked' : ''}>
+          Mostrar este producto en la tienda pública
+        </label>
+        <div class="stock" style="margin-top:4px;">Desmárcalo en los colores repetidos de una misma moto que no quieres que aparezcan como tarjeta aparte — deja marcado solo el color que va a representar el modelo.</div>
+      </div>
       <button class="btn" onclick="guardarEdicionProducto('${productoId}')">Guardar cambios</button>
 
       <h3 style="margin-top:26px;">Foto principal</h3>
@@ -4274,10 +4290,11 @@ async function guardarEdicionProducto(productoId){
   const sku = document.getElementById('ep-sku').value.trim() || null;
   const descripcion = document.getElementById('ep-descripcion').value.trim() || null;
   const etiquetas = document.getElementById('ep-etiquetas').value.split(',').map(t=>t.trim()).filter(Boolean);
+  const mostrar_en_tienda_publica = document.getElementById('ep-mostrar-tienda').checked;
 
   if(!nombre){ msg.innerHTML = `<div class="msg err">El nombre es obligatorio.</div>`; return; }
 
-  const { error } = await sb.from('productos').update({ nombre, categoria_id, precio, sku, descripcion, etiquetas }).eq('id', productoId);
+  const { error } = await sb.from('productos').update({ nombre, categoria_id, precio, sku, descripcion, etiquetas, mostrar_en_tienda_publica }).eq('id', productoId);
   if(error){ msg.innerHTML = `<div class="msg err">Error: ${error.message}</div>`; return; }
   msg.innerHTML = `<div class="msg ok">Cambios guardados.</div>`;
   renderProductos();

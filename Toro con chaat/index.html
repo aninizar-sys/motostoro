@@ -163,8 +163,8 @@
     #scroll-controles button{width:40px; height:40px; font-size:16px;}
   }
 
-  .video-embed-wrap{min-height:730px; display:flex; align-items:flex-start; justify-content:center; width:100%;}
-  .video-embed-wrap iframe{min-height:730px !important;}
+  .video-embed-wrap{background:var(--negro2); border:1px solid var(--borde); border-radius:14px; display:flex; justify-content:center; overflow:hidden; min-height:400px; width:100%;}
+  .video-embed-wrap iframe, .video-embed-wrap blockquote{max-width:100% !important;}
 
   .motosan-grupo{background:var(--negro2); border:1px solid var(--borde); border-radius:14px; padding:22px; margin-bottom:18px;}
   .motosan-grupo h3{font-size:17px; margin-bottom:2px;}
@@ -743,6 +743,11 @@ async function enviarMensajeChat(){
   CHAT_ENVIANDO = false;
 }
 
+function extraerTikTokVideoId(url){
+  const m = url.match(/\/video\/(\d+)/);
+  return m ? m[1] : null;
+}
+
 async function cargarVideosTienda(){
   const { data: videos } = await sb.from('videos_tienda').select('*').eq('activo', true).order('orden');
   const seccion = document.getElementById('videos-seccion');
@@ -754,7 +759,9 @@ async function cargarVideosTienda(){
     if(v.plataforma === 'instagram'){
       return `<div class="video-embed-wrap"><blockquote class="instagram-media" data-instgrm-permalink="${v.url}" data-instgrm-version="14" style="margin:0; width:100%; min-width:300px;"></blockquote></div>`;
     }
-    return `<div class="video-embed-wrap"><blockquote class="tiktok-embed" cite="${v.url}" style="margin:0 auto; max-width:100%; min-width:300px;"><section></section></blockquote></div>`;
+    const videoId = extraerTikTokVideoId(v.url);
+    if(!videoId) return '';
+    return `<div class="video-embed-wrap"><iframe src="https://www.tiktok.com/player/v1/${videoId}?music_info=1&description=1" allow="fullscreen" style="width:100%; height:400px; border:none;"></iframe></div>`;
   }).join('');
 
   if(videos.some(v => v.plataforma === 'instagram')){
@@ -762,12 +769,6 @@ async function cargarVideosTienda(){
     s.async = true;
     s.src = 'https://www.instagram.com/embed.js';
     s.onload = () => window.instgrm?.Embeds?.process();
-    document.body.appendChild(s);
-  }
-  if(videos.some(v => v.plataforma === 'tiktok')){
-    const s = document.createElement('script');
-    s.async = true;
-    s.src = 'https://www.tiktok.com/embed.js';
     document.body.appendChild(s);
   }
 }
