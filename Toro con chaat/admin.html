@@ -2570,6 +2570,57 @@ function agruparPorMonedaMetodo(movimientos){
     (ORDEN_MONEDA[a.moneda]-ORDEN_MONEDA[b.moneda]) || a.metodo.localeCompare(b.metodo));
 }
 
+// Formulario con una fila por cada moneda/método que tenga saldo disponible en esta caja,
+// para retirar de cada una por separado (en su propia moneda), tal como está guardado realmente.
+function formularioRetiroPorMoneda(grupos, prefix){
+  const disponibles = grupos.filter(g => (g.ingresos - g.egresos) > 0.01);
+  if(!disponibles.length) return `<div class="empty">No hay saldo disponible en ninguna moneda/forma todavía.</div>`;
+
+  return disponibles.map((g,i)=>{
+    const neto = g.ingresos - g.egresos;
+    const id = `${prefix}-${i}`;
+    return `
+      <div class="inline-2" style="margin-bottom:6px; align-items:end;">
+        <div class="form-row" style="margin-bottom:0;">
+          <label>${g.moneda} — ${NOMBRES_METODO_ICONO[g.metodo]||''} ${g.metodo} <span style="color:var(--carbon);">(disponible: ${fmtMoneda(g.moneda, neto)})</span></label>
+          <input type="number" id="${id}-monto" data-moneda="${g.moneda}" data-metodo="${g.metodo}" data-max="${neto}" min="0" max="${neto}" step="0.01" placeholder="0.00">
+        </div>
+        ${g.moneda !== 'USD' ? `
+          <div class="form-row" style="margin-bottom:0;">
+            <label>Tasa (1 USD = X)</label>
+            <input type="number" id="${id}-tasa" min="0" step="0.01">
+          </div>
+        ` : '<div></div>'}
+      </div>
+    `;
+  }).join('');
+}
+
+// Lee todas las filas con monto > 0 del formulario y devuelve las líneas a retirar (ya en USD),
+// o {error} si falta algo.
+function leerRetiroPorMoneda(prefix){
+  const inputs = document.querySelectorAll(`[id^="${prefix}-"][id$="-monto"]`);
+  const lineas = [];
+  for(const input of inputs){
+    const monto = parseFloat(input.value) || 0;
+    if(monto <= 0) continue;
+    const moneda = input.dataset.moneda;
+    const metodo = input.dataset.metodo;
+    const max = parseFloat(input.dataset.max);
+    if(monto > max + 0.01) return { error: `No puedes retirar más de lo disponible en ${moneda} — ${metodo} (${fmtMoneda(moneda, max)}).` };
+    let montoUsd = monto, tasa = null;
+    if(moneda !== 'USD'){
+      const idBase = input.id.replace('-monto','');
+      tasa = parseFloat(document.getElementById(`${idBase}-tasa`)?.value);
+      if(!tasa || tasa <= 0) return { error: `Falta la tasa de cambio de ${moneda}.` };
+      montoUsd = monto / tasa;
+    }
+    lineas.push({ moneda, metodo, montoOriginal: monto, tasa, montoUsd });
+  }
+  if(!lineas.length) return { error: 'Ingresa al menos un monto a retirar.' };
+  return { lineas };
+}
+
 function tablaMultimoneda(movimientos, notaExtra){
   const gruposOrdenados = agruparPorMonedaMetodo(movimientos);
   return `
@@ -2671,18 +2722,15 @@ async function renderCaja(){
 
     <div class="card">
       <h3>🏛️ Retirar dinero a la Caja Matriz</h3>
-      <div class="stock" style="margin-bottom:10px;">Usa esto cuando saques efectivo/dinero de esta sede para llevarlo o transferirlo a la caja principal de la empresa.</div>
+      <div class="stock" style="margin-bottom:10px;">Retira de cada moneda/forma por separado, tal como está realmente en esta caja — no hace falta convertir nada a mano.</div>
       <div id="retiro-matriz-msg"></div>
-      <div class="form-row" style="margin-bottom:0;"><label>Monto a retirar (equivalente USD)</label><input type="number" id="monto-retiro-matriz" min="0" step="0.01" placeholder="0.00"></div>
-      <div class="form-row" style="margin-top:6px;"><label>¿En qué moneda/forma sale de esta caja?</label></div>
-      ${bloqueMoneda('rtm')}
-      <button class="btn chico secundario" style="margin-top:6px;" onclick="retirarACajaMatriz()">Retirar a Caja Matriz</button>
+      ${formularioRetiroPorMoneda(agruparPorMonedaMetodo(todosMovimientos), 'rtm')}
+      <button class="btn chico secundario" style="margin-top:10px;" onclick="retirarACajaMatriz()">Retirar a Caja Matriz</button>
     </div>
 
     ${tablaMovimientosRecientes(todosMovimientos, false)}
   `;
   actualizarMetodosGenerico('gto');
-  actualizarMetodosGenerico('rtm');
 }
 
 async function registrarGasto(){
@@ -2716,34 +2764,34 @@ async function registrarGasto(){
 
 async function retirarACajaMatriz(){
   const msg = document.getElementById('retiro-matriz-msg');
-  const monto = parseFloat(document.getElementById('monto-retiro-matriz').value);
-  if(!monto || monto <= 0){ msg.innerHTML = `<div class="msg err">Ingresa un monto válido.</div>`; return; }
+  const resultado = leerRetiroPorMoneda('rtm');
+  if(resultado.error){ msg.innerHTML = `<div class="msg err">${resultado.error}</div>`; return; }
 
   const { data: cajaSede } = await sb.from('cajas').select('*').eq('sede_id', ESTADO.sedeSeleccionada).single();
   if(!cajaSede){ msg.innerHTML = `<div class="msg err">No se encontró la caja de esta sede.</div>`; return; }
-  if(monto > Number(cajaSede.saldo_actual)){ msg.innerHTML = `<div class="msg err">No puedes retirar más de lo que hay en esta caja (${money(cajaSede.saldo_actual)}).</div>`; return; }
 
   const { data: cajaMatriz } = await sb.from('cajas').select('*').is('sede_id', null).single();
   if(!cajaMatriz){ msg.innerHTML = `<div class="msg err">No se encontró la Caja Matriz.</div>`; return; }
 
-  const pago = datosMonedaCaja('rtm', monto);
-  if(pago.error){ msg.innerHTML = `<div class="msg err">${pago.error}</div>`; return; }
-
   const nombreSede = sedeNombre(ESTADO.sedeSeleccionada);
+  let totalUsd = 0;
 
-  await sb.from('movimientos_caja').insert({
-    caja_id: cajaSede.id, sede_id: ESTADO.sedeSeleccionada, tipo: 'egreso_retiro_matriz', monto,
-    moneda: pago.moneda, metodo_pago: pago.metodo, monto_original: pago.montoOriginal, tasa_cambio: pago.tasa,
-    descripcion: `Retiro hacia Caja Matriz`, created_by: ESTADO.perfil.id
-  });
-  await sb.from('cajas').update({ saldo_actual: Number(cajaSede.saldo_actual) - monto }).eq('id', cajaSede.id);
+  for(const l of resultado.lineas){
+    await sb.from('movimientos_caja').insert({
+      caja_id: cajaSede.id, sede_id: ESTADO.sedeSeleccionada, tipo: 'egreso_retiro_matriz', monto: l.montoUsd,
+      moneda: l.moneda, metodo_pago: l.metodo, monto_original: l.montoOriginal, tasa_cambio: l.tasa,
+      descripcion: `Retiro hacia Caja Matriz`, created_by: ESTADO.perfil.id
+    });
+    await sb.from('movimientos_caja').insert({
+      caja_id: cajaMatriz.id, sede_id: null, tipo: 'ingreso_retiro_sede', monto: l.montoUsd,
+      moneda: l.moneda, metodo_pago: l.metodo, monto_original: l.montoOriginal, tasa_cambio: l.tasa,
+      descripcion: `Retiro recibido de ${nombreSede}`, created_by: ESTADO.perfil.id
+    });
+    totalUsd += l.montoUsd;
+  }
 
-  await sb.from('movimientos_caja').insert({
-    caja_id: cajaMatriz.id, sede_id: null, tipo: 'ingreso_retiro_sede', monto,
-    moneda: pago.moneda, metodo_pago: pago.metodo, monto_original: pago.montoOriginal, tasa_cambio: pago.tasa,
-    descripcion: `Retiro recibido de ${nombreSede}`, created_by: ESTADO.perfil.id
-  });
-  await sb.from('cajas').update({ saldo_actual: Number(cajaMatriz.saldo_actual) + monto }).eq('id', cajaMatriz.id);
+  await sb.from('cajas').update({ saldo_actual: Number(cajaSede.saldo_actual) - totalUsd }).eq('id', cajaSede.id);
+  await sb.from('cajas').update({ saldo_actual: Number(cajaMatriz.saldo_actual) + totalUsd }).eq('id', cajaMatriz.id);
 
   renderCaja();
 }
