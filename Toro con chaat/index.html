@@ -148,6 +148,21 @@
 
   .empty-state{color:var(--carbon); text-align:center; padding:70px 20px; font-size:14px;}
 
+  #scroll-controles{
+    display:none; flex-direction:column; gap:10px; position:fixed; bottom:22px; left:22px; z-index:50;
+  }
+  #scroll-controles button{
+    width:44px; height:44px; border-radius:50%; border:1px solid var(--borde);
+    background:var(--negro2); color:var(--blanco); font-size:18px; font-weight:700;
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+    box-shadow:0 4px 14px rgba(0,0,0,.4); transition:all .15s;
+  }
+  #scroll-controles button:hover{background:var(--rojo); border-color:var(--rojo);}
+  @media(max-width:640px){
+    #scroll-controles{left:14px; bottom:14px;}
+    #scroll-controles button{width:40px; height:40px; font-size:16px;}
+  }
+
   .motosan-grupo{background:var(--negro2); border:1px solid var(--borde); border-radius:14px; padding:22px; margin-bottom:18px;}
   .motosan-grupo h3{font-size:17px; margin-bottom:2px;}
   .motosan-grupo .sede-tag{color:var(--carbon); font-size:12.5px; margin-bottom:16px;}
@@ -301,6 +316,12 @@
   </div>
 </section>
 
+<section class="catalogo wrap" id="motosan-seccion" style="display:none; padding-top:34px; padding-bottom:10px;">
+  <h2>🎡 Motosán disponible</h2>
+  <div class="sub">Paga una cuota semanal y participa en el sorteo mensual — mientras más rápido te pongas al día, más chance tienes.</div>
+  <div id="motosan-grupos-publico"></div>
+</section>
+
 <nav class="filtros" id="filtros">
   <div class="filtros-inner" id="filtros-inner">
     <button class="chip activo" data-cat="todas">Todas</button>
@@ -314,10 +335,10 @@
   <div class="grid-productos" id="grid-productos"></div>
 </section>
 
-<section class="catalogo wrap" id="motosan-seccion" style="display:none; padding-top:0;">
-  <h2>🎡 Motosán disponible</h2>
-  <div class="sub">Paga una cuota semanal y participa en el sorteo mensual — mientras más rápido te pongas al día, más chance tienes.</div>
-  <div id="motosan-grupos-publico"></div>
+<section class="catalogo wrap" id="videos-seccion" style="display:none; padding-top:10px;">
+  <h2>🎬 Síguenos</h2>
+  <div class="sub">Nuestros últimos videos en Instagram y TikTok.</div>
+  <div id="videos-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(300px,1fr)); gap:20px;"></div>
 </section>
 
 <section class="franja">
@@ -744,7 +765,57 @@ async function enviarMensajeChat(){
   CHAT_ENVIANDO = false;
 }
 
+async function cargarVideosTienda(){
+  const { data: videos } = await sb.from('videos_tienda').select('*').eq('activo', true).order('orden');
+  const seccion = document.getElementById('videos-seccion');
+  const grid = document.getElementById('videos-grid');
+  if(!videos || !videos.length){ seccion.style.display = 'none'; return; }
+
+  seccion.style.display = 'block';
+  grid.innerHTML = videos.map(v => {
+    if(v.plataforma === 'instagram'){
+      return `<blockquote class="instagram-media" data-instgrm-permalink="${v.url}" data-instgrm-version="14" style="margin:0; width:100%;"></blockquote>`;
+    }
+    return `<blockquote class="tiktok-embed" cite="${v.url}" style="margin:0 auto; max-width:100%;"><section></section></blockquote>`;
+  }).join('');
+
+  if(videos.some(v => v.plataforma === 'instagram')){
+    const s = document.createElement('script');
+    s.async = true;
+    s.src = 'https://www.instagram.com/embed.js';
+    s.onload = () => window.instgrm?.Embeds?.process();
+    document.body.appendChild(s);
+  }
+  if(videos.some(v => v.plataforma === 'tiktok')){
+    const s = document.createElement('script');
+    s.async = true;
+    s.src = 'https://www.tiktok.com/embed.js';
+    document.body.appendChild(s);
+  }
+}
+
 cargarCatalogo();
+cargarVideosTienda();
+</script>
+
+<div id="scroll-controles">
+  <button id="btn-scroll-top" title="Subir al inicio" aria-label="Subir al inicio" onclick="window.scrollTo({top:0, behavior:'smooth'})">↑</button>
+  <button id="btn-scroll-bottom" title="Bajar al final" aria-label="Bajar al final" onclick="window.scrollTo({top:document.body.scrollHeight, behavior:'smooth'})">↓</button>
+</div>
+<script>
+  const scrollControles = document.getElementById('scroll-controles');
+  const btnScrollTop = document.getElementById('btn-scroll-top');
+  const btnScrollBottom = document.getElementById('btn-scroll-bottom');
+  function actualizarControlesScroll(){
+    const yaAbajo = (window.innerHeight + window.scrollY) >= (document.body.scrollHeight - 40);
+    const yaArriba = window.scrollY < 200;
+    scrollControles.style.display = document.body.scrollHeight > window.innerHeight * 1.4 ? 'flex' : 'none';
+    btnScrollTop.style.display = yaArriba ? 'none' : 'flex';
+    btnScrollBottom.style.display = yaAbajo ? 'none' : 'flex';
+  }
+  window.addEventListener('scroll', actualizarControlesScroll);
+  window.addEventListener('resize', actualizarControlesScroll);
+  setTimeout(actualizarControlesScroll, 800);
 </script>
 </body>
 </html>

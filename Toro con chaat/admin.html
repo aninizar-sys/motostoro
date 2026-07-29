@@ -211,6 +211,7 @@
       <button data-tab="ventas" class="activo">🧾 Ventas</button>
       <button data-tab="motosan">🎡 Motosán</button>
       <button data-tab="ahorro">🏦 Plan Ahorro</button>
+      <button data-tab="apartados">📦 Apartados</button>
       <button data-tab="compras">🛒 Compras</button>
       <button data-tab="caja">💰 Caja</button>
       <button data-tab="cajamatriz" id="nav-caja-matriz" style="display:none;">🏛️ Caja Matriz</button>
@@ -407,7 +408,7 @@ function actualizarVisibilidadSelectorSede(){
    NAVEGACIÓN DE TABS
 ========================================================= */
 const TITULOS = {
-  ventas: 'Ventas', motosan: 'Motosán', ahorro: 'Plan Ahorro', compras: 'Compras', caja: 'Caja', cajamatriz: 'Caja Matriz', finanzas: 'Finanzas', cobrar: 'Cuentas por cobrar', pagar: 'Cuentas por pagar',
+  ventas: 'Ventas', motosan: 'Motosán', ahorro: 'Plan Ahorro', apartados: 'Apartados', compras: 'Compras', caja: 'Caja', cajamatriz: 'Caja Matriz', finanzas: 'Finanzas', cobrar: 'Cuentas por cobrar', pagar: 'Cuentas por pagar',
   inventario: 'Inventario', traslados: 'Traslados entre sedes', terceros: 'Terceros de confianza', productos: 'Productos', clientes: 'Clientes', contenido: 'Contenido de la tienda'
 };
 
@@ -424,6 +425,7 @@ function cambiarTab(tab){
     ventas: renderVentas,
     motosan: renderMotosan,
     ahorro: renderPlanAhorro,
+    apartados: renderApartados,
     compras: renderCompras,
     caja: renderCaja,
     cajamatriz: renderCajaMatriz,
@@ -502,12 +504,12 @@ const METODOS_POR_MONEDA = {
   VES: ['Pago móvil / Transferencia', 'Efectivo']
 };
 
-function bloqueMoneda(prefix){
+function bloqueMoneda(prefix, montoFieldId){
   return `
     <div class="inline-2">
       <div class="form-row" style="margin-bottom:0;">
         <label>Moneda recibida/pagada</label>
-        <select id="${prefix}-moneda" onchange="actualizarMetodosGenerico('${prefix}')">
+        <select id="${prefix}-moneda" onchange="actualizarMetodosGenerico('${prefix}'); ${montoFieldId?`mostrarEquivalenciaGenerica('${prefix}','${montoFieldId}')`:''}">
           <option value="USD">Dólares (USD)</option>
           <option value="COP">Pesos colombianos (COP)</option>
           <option value="VES">Bolívares (VES)</option>
@@ -520,10 +522,25 @@ function bloqueMoneda(prefix){
     </div>
     <div class="form-row" id="${prefix}-tasa-wrap" style="display:none;">
       <label>Tasa de cambio (1 USD = X)</label>
-      <input type="number" id="${prefix}-tasa" min="0" step="0.01">
+      <input type="number" id="${prefix}-tasa" min="0" step="0.01" ${montoFieldId?`oninput="mostrarEquivalenciaGenerica('${prefix}','${montoFieldId}')"`:''}>
       <div class="stock" id="${prefix}-equivale"></div>
     </div>
   `;
+}
+
+// Muestra "$X USD equivalen a Y <moneda>" mientras se escribe el monto (en USD) o la tasa,
+// para que quede claro que el campo de monto siempre es en dólares, no en la moneda elegida.
+function mostrarEquivalenciaGenerica(prefix, montoFieldId){
+  const el = document.getElementById(`${prefix}-equivale`);
+  if(!el) return;
+  const moneda = document.getElementById(`${prefix}-moneda`)?.value;
+  const montoUsd = parseFloat(document.getElementById(montoFieldId)?.value) || 0;
+  const tasa = parseFloat(document.getElementById(`${prefix}-tasa`)?.value) || 0;
+  if(moneda !== 'USD' && montoUsd > 0 && tasa > 0){
+    el.textContent = `${money(montoUsd)} equivalen a ${fmtMoneda(moneda, montoUsd*tasa)}`;
+  } else {
+    el.textContent = '';
+  }
 }
 
 function actualizarMetodosGenerico(prefix){
@@ -617,21 +634,22 @@ function actualizarTotalPagosMixtosVenta(){
 function renderPagosMixtosVenta(){
   const div = document.getElementById('pagos-mixtos-lista');
   if(!div) return;
+  const estiloCampo = 'padding:8px; background:var(--negro3); border:1px solid var(--borde); border-radius:6px; color:#fff; width:100%;';
   div.innerHTML = (ESTADO.pagosMixtosVenta||[]).map((l,i)=>`
     <div class="inline-2" style="margin-bottom:6px;">
-      <select onchange="actualizarLineaPagoVenta(${i},'moneda',this.value)">
+      <select style="${estiloCampo}" onchange="actualizarLineaPagoVenta(${i},'moneda',this.value)">
         <option value="USD" ${l.moneda==='USD'?'selected':''}>Dólares (USD)</option>
         <option value="COP" ${l.moneda==='COP'?'selected':''}>Pesos colombianos (COP)</option>
         <option value="VES" ${l.moneda==='VES'?'selected':''}>Bolívares (VES)</option>
       </select>
-      <select onchange="actualizarLineaPagoVenta(${i},'metodo',this.value)">
+      <select style="${estiloCampo}" onchange="actualizarLineaPagoVenta(${i},'metodo',this.value)">
         ${METODOS_POR_MONEDA[l.moneda].map(m=>`<option value="${m}" ${l.metodo===m?'selected':''}>${m}</option>`).join('')}
       </select>
     </div>
     <div class="inline-2" style="margin-bottom:10px;">
-      <input type="number" min="0" step="0.01" placeholder="Monto en ${l.moneda}" value="${l.monto||''}" oninput="actualizarLineaPagoVenta(${i},'monto',parseFloat(this.value)||0)">
+      <input type="number" min="0" step="0.01" placeholder="Monto en ${l.moneda}" value="${l.monto||''}" style="${estiloCampo}" oninput="actualizarLineaPagoVenta(${i},'monto',parseFloat(this.value)||0)">
       ${l.moneda!=='USD'
-        ? `<input type="number" min="0" step="0.01" placeholder="Tasa (1 USD = X)" value="${l.tasa||''}" oninput="actualizarLineaPagoVenta(${i},'tasa',parseFloat(this.value)||0)">`
+        ? `<input type="number" min="0" step="0.01" placeholder="Tasa (1 USD = X)" value="${l.tasa||''}" style="${estiloCampo}" oninput="actualizarLineaPagoVenta(${i},'tasa',parseFloat(this.value)||0)">`
         : (ESTADO.pagosMixtosVenta.length>1 ? `<button type="button" class="btn chico secundario" onclick="quitarLineaPagoVenta(${i})">Quitar</button>` : `<span></span>`)
       }
     </div>
@@ -662,7 +680,6 @@ async function renderVentas(){
     <div class="grid2">
       <div class="card">
         <h3>Nueva venta — ${sedeNombre(ESTADO.sedeSeleccionada)}</h3>
-        <div id="venta-msg"></div>
 
         <div class="form-row buscador-resultados">
           <label>Buscar producto (nombre, código) o deja vacío para ver todo el inventario</label>
@@ -701,6 +718,7 @@ async function renderVentas(){
         <div class="stock" style="margin-top:6px;">Pagado hasta ahora: <span id="pagos-mixtos-total">$0.00</span></div>
 
         <button class="btn" style="margin-top:10px;" onclick="registrarVenta()">Registrar venta</button>
+        <div id="venta-msg" style="margin-top:12px;"></div>
       </div>
 
       <div class="card">
@@ -1027,9 +1045,9 @@ async function registrarVenta(resolucion){
     if(totalPagadoUsd < montoObjetivo){
       const faltante = montoObjetivo - totalPagadoUsd;
       msg.innerHTML = `
-        <div class="msg err">
-          Faltan ${money(faltante)} para completar el pago (${money(totalPagadoUsd)} de ${money(montoObjetivo)}).
-          <div class="acciones" style="margin-top:8px;">
+        <div class="msg err" style="font-size:16px; padding:14px; border-width:2px;">
+          ⚠️ Faltan ${money(faltante)} para completar el pago (${money(totalPagadoUsd)} de ${money(montoObjetivo)}).
+          <div class="acciones" style="margin-top:10px;">
             <button class="btn chico" onclick="registrarVenta('pendiente')">Dejar el resto como saldo pendiente del cliente</button>
             <button class="btn chico secundario" onclick="document.getElementById('venta-msg').innerHTML=''">Cancelar</button>
           </div>
@@ -1037,17 +1055,19 @@ async function registrarVenta(resolucion){
       if(!clienteId){
         msg.innerHTML += `<div class="msg err" style="margin-top:6px;">Para dejar saldo pendiente necesitas seleccionar o crear un cliente arriba.</div>`;
       }
+      msg.scrollIntoView({behavior:'smooth', block:'center'});
       return;
     } else {
       const sobrante = totalPagadoUsd - montoObjetivo;
       msg.innerHTML = `
-        <div class="msg err">
-          Sobran ${money(sobrante)} (pagaron ${money(totalPagadoUsd)} de ${money(montoObjetivo)}).
-          <div class="acciones" style="margin-top:8px;">
+        <div class="msg err" style="font-size:16px; padding:14px; border-width:2px;">
+          ⚠️ Sobran ${money(sobrante)} (pagaron ${money(totalPagadoUsd)} de ${money(montoObjetivo)}).
+          <div class="acciones" style="margin-top:10px;">
             <button class="btn chico" onclick="registrarVenta('dejarlo')">Dejarlo así (ingreso extra)</button>
             <button class="btn chico secundario" onclick="registrarVenta('vuelto')">Devolver vuelto al cliente</button>
           </div>
         </div>`;
+      msg.scrollIntoView({behavior:'smooth', block:'center'});
       return;
     }
   }
@@ -1099,6 +1119,7 @@ async function registrarVenta(resolucion){
 
   // Caja: una línea por cada forma de pago usada
   const { data: caja } = await sb.from('cajas').select('*').eq('sede_id', ESTADO.sedeSeleccionada).single();
+  const nombreClienteVenta = clienteId ? (ESTADO.clientes.find(c=>c.id===clienteId)?.nombre_completo || null) : null;
   if(caja && lineasPago.length){
     // Si hubo que devolver vuelto, se recorta proporcionalmente el monto en USD que efectivamente queda en caja
     const factorAjuste = (resolucion === 'vuelto' && totalPagadoUsd > 0) ? (montoObjetivo / totalPagadoUsd) : 1;
@@ -1110,7 +1131,7 @@ async function registrarVenta(resolucion){
         caja_id: caja.id, sede_id: ESTADO.sedeSeleccionada,
         tipo: esCredito ? 'ingreso_abono' : 'ingreso_venta', monto: usdAjustado,
         moneda: l.moneda, metodo_pago: l.metodo, monto_original: l.monto, tasa_cambio: l.moneda==='USD'?null:l.tasa,
-        descripcion: esCredito ? 'Abono inicial de venta a crédito' : 'Venta de contado',
+        descripcion: `${esCredito ? 'Abono inicial de venta a crédito' : 'Venta de contado'}${nombreClienteVenta ? ' — ' + nombreClienteVenta : ''}`,
         referencia_id: venta.id, created_by: ESTADO.perfil.id
       });
       deltaCaja += usdAjustado;
@@ -1468,10 +1489,11 @@ async function registrarPagoMotosan(participanteId, cuota){
   const { error } = await sb.from('motosan_pagos').insert({ participante_id: participanteId, monto: cuota, created_by: ESTADO.perfil.id });
   if(error){ msg.innerHTML = `<div class="msg err">Error al registrar el pago: ${error.message}</div>`; return; }
 
+  const nombreClienteMotosan = ESTADO.clientes.find(c=>c.id===participante.cliente_id)?.nombre_completo || null;
   await sb.from('movimientos_caja').insert({
     caja_id: caja.id, sede_id: participante.sede_id, tipo: 'ingreso_abono', monto: cuota,
     moneda: pago.moneda, metodo_pago: pago.metodo, monto_original: pago.montoOriginal, tasa_cambio: pago.tasa,
-    descripcion: 'Pago semanal Motosán', referencia_id: participanteId, created_by: ESTADO.perfil.id
+    descripcion: `Pago semanal Motosán${nombreClienteMotosan ? ' — ' + nombreClienteMotosan : ''}`, referencia_id: participanteId, created_by: ESTADO.perfil.id
   });
   await sb.from('cajas').update({ saldo_actual: Number(caja.saldo_actual) + cuota }).eq('id', caja.id);
 
@@ -1740,10 +1762,11 @@ async function confirmarPagoAhorro(planId, saldoActual){
   // Caja
   const { data: caja } = await sb.from('cajas').select('*').eq('sede_id', ESTADO.sedeSeleccionada).single();
   if(caja){
+    const nombreClientePA = ESTADO.clientes.find(c=>c.id===plan?.cliente_id)?.nombre_completo || null;
     await sb.from('movimientos_caja').insert({
       caja_id: caja.id, sede_id: ESTADO.sedeSeleccionada, tipo: 'ingreso_abono', monto: montoUsd,
       moneda, metodo_pago: metodo, monto_original: montoOriginal, tasa_cambio: tasa,
-      descripcion: `Plan Ahorro — pago en ${moneda} por ${metodo}${tasa ? ` (tasa ${tasa})` : ''}`,
+      descripcion: `Plan Ahorro — pago en ${moneda} por ${metodo}${tasa ? ` (tasa ${tasa})` : ''}${nombreClientePA ? ' — ' + nombreClientePA : ''}`,
       referencia_id: planId, created_by: ESTADO.perfil.id
     });
     await sb.from('cajas').update({ saldo_actual: Number(caja.saldo_actual) + montoUsd }).eq('id', caja.id);
@@ -1763,6 +1786,322 @@ async function confirmarPagoAhorro(planId, saldoActual){
 
   cerrarModal();
   renderPlanAhorro();
+}
+
+/* =========================================================
+   APARTADOS
+========================================================= */
+async function renderApartados(){
+  const cont = document.getElementById('contenido-tab');
+  cont.innerHTML = `<div class="empty">Cargando...</div>`;
+  await cargarProductosYClientes();
+
+  const { data: apartados } = await sb.from('apartados')
+    .select('*, clientes(nombre_completo, telefono, cedula), productos(nombre)')
+    .eq('sede_id', ESTADO.sedeSeleccionada)
+    .eq('estado', 'activo')
+    .order('created_at', {ascending:false});
+
+  cont.innerHTML = `
+    <div class="grid2">
+      <div class="card">
+        <h3>Nuevo apartado</h3>
+        <div id="ap-nuevo-msg"></div>
+        <div class="form-row buscador-resultados">
+          <label>Cliente</label>
+          <input type="text" id="ap-buscar-cliente" placeholder="Buscar o escribir nombre nuevo..." oninput="buscarClienteInputAp(this.value)" autocomplete="off">
+          <div class="buscador-lista" id="ap-lista-clientes" style="display:none;"></div>
+        </div>
+        <input type="hidden" id="ap-cliente-id-seleccionado">
+
+        <div class="form-row buscador-resultados">
+          <label>Producto a apartar</label>
+          <input type="text" id="ap-buscar-producto" placeholder="Escribe para buscar..." oninput="buscarProductoAp(this.value)" onfocus="buscarProductoAp(this.value)" autocomplete="off">
+          <div class="buscador-lista" id="ap-lista-productos" style="display:none;"></div>
+        </div>
+        <div id="ap-producto-seleccionado" class="stock"></div>
+        <input type="hidden" id="ap-producto-id">
+
+        <div class="inline-2">
+          <div class="form-row"><label>Cantidad</label><input type="number" id="ap-cantidad" min="1" step="1" value="1"></div>
+          <div class="form-row"><label>Monto total (editable)</label><input type="number" id="ap-monto-total" min="0" step="0.01"></div>
+        </div>
+
+        <div class="form-row"><label>Abono inicial (opcional — déjalo en 0 si solo va a apartar sin dejar nada)</label><input type="number" id="ap-abono-inicial" min="0" step="0.01" placeholder="0.00" oninput="mostrarEquivalenciaGenerica('apa','ap-abono-inicial')"></div>
+        ${bloqueMoneda('apa', 'ap-abono-inicial')}
+        <div class="form-row"><label>Nota (opcional)</label><input type="text" id="ap-nota" placeholder="Ej: lo recoge el sábado"></div>
+
+        <button class="btn" onclick="crearApartado()">Registrar apartado</button>
+      </div>
+
+      <div class="card">
+        <h3>Apartados activos — ${sedeNombre(ESTADO.sedeSeleccionada)}</h3>
+        <div class="form-row"><input type="text" id="buscar-ap" placeholder="Buscar por cliente o cédula..." oninput="filtrarApPorTexto(this.value)"></div>
+        <table>
+          <thead><tr><th>Cliente</th><th>Producto</th><th>Total</th><th>Abonado</th><th>Saldo</th><th></th></tr></thead>
+          <tbody id="tbody-apartados">
+            ${(apartados||[]).map(a=>`
+              <tr data-busq="${((a.clientes?.nombre_completo||'')+' '+(a.clientes?.cedula||'')).toLowerCase()}">
+                <td style="cursor:pointer; text-decoration:underline;" onclick="abrirHistorialApartado('${a.id}')">${a.clientes?.nombre_completo||'—'}</td>
+                <td>${a.productos?.nombre||'—'} ${a.cantidad>1?`×${a.cantidad}`:''}</td>
+                <td>${money(a.monto_total)}</td>
+                <td style="color:var(--verde)">${money(a.monto_abonado)}</td>
+                <td style="color:var(--rojo); font-weight:600;">${money(a.saldo_pendiente)}</td>
+                <td style="white-space:nowrap;">
+                  <button class="btn chico" onclick="abrirModalAbonoApartado('${a.id}', ${a.saldo_pendiente})">Abonar</button>
+                  <button class="btn chico secundario" onclick="confirmarVentaApartado('${a.id}')">✅ Convertir en venta</button>
+                  <button class="btn chico secundario" onclick="cancelarApartado('${a.id}')">✖ Cancelar</button>
+                </td>
+              </tr>
+            `).join('') || `<tr><td colspan="6" class="empty">No hay apartados activos en esta sede</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+  actualizarMetodosGenerico('apa');
+}
+
+function filtrarApPorTexto(texto){
+  const t = texto.trim().toLowerCase();
+  document.querySelectorAll('#tbody-apartados tr[data-busq]').forEach(tr=>{
+    tr.style.display = tr.dataset.busq.includes(t) ? '' : 'none';
+  });
+}
+
+function buscarClienteInputAp(txt){
+  document.getElementById('ap-cliente-id-seleccionado').value = '';
+  const lista = document.getElementById('ap-lista-clientes');
+  if(!txt.trim()){ lista.style.display='none'; return; }
+  const t = txt.toLowerCase();
+  const results = ESTADO.clientes.filter(c => c.nombre_completo.toLowerCase().includes(t)).slice(0,8);
+  let html = results.map(c => `<div onclick="seleccionarClienteAp('${c.id}','${c.nombre_completo.replace(/'/g,"\\'")}')">${c.nombre_completo}</div>`).join('');
+  html += `<div style="color:var(--rojo);" onclick="crearClienteRapidoAp('${txt.replace(/'/g,"\\'")}')">+ Crear cliente nuevo: "${txt}"</div>`;
+  lista.innerHTML = html;
+  lista.style.display = 'block';
+}
+function seleccionarClienteAp(id, nombre){
+  document.getElementById('ap-cliente-id-seleccionado').value = id;
+  document.getElementById('ap-buscar-cliente').value = nombre;
+  document.getElementById('ap-lista-clientes').style.display = 'none';
+}
+function crearClienteRapidoAp(nombre){
+  if(!nombre.trim()) return;
+  abrirModalClienteCompleto(nombre, 'seleccionarClienteAp');
+}
+
+function buscarProductoAp(txt){
+  const lista = document.getElementById('ap-lista-productos');
+  const t = txt.toLowerCase().trim();
+  let results;
+  if(!t){
+    results = ESTADO.productos.filter(p => (ESTADO.inventarioSede[p.id] ?? 0) > 0).sort((a,b)=>a.nombre.localeCompare(b.nombre)).slice(0,30);
+  } else {
+    results = ESTADO.productos.filter(p => p.nombre.toLowerCase().includes(t) || (p.sku||'').toLowerCase().includes(t)).slice(0,15);
+  }
+  if(!results.length){ lista.innerHTML = `<div>Sin productos con stock en esta sede.</div>`; lista.style.display='block'; return; }
+  lista.innerHTML = results.map(p => `
+    <div onclick="seleccionarProductoAp('${p.id}')">
+      ${p.nombre} — ${money(p.precio)}
+      <div class="stock">Stock en esta sede: ${ESTADO.inventarioSede[p.id] ?? 0}</div>
+    </div>
+  `).join('');
+  lista.style.display = 'block';
+}
+
+function seleccionarProductoAp(productoId){
+  const producto = ESTADO.productos.find(p=>p.id===productoId);
+  if(!producto) return;
+  document.getElementById('ap-producto-id').value = productoId;
+  document.getElementById('ap-buscar-producto').value = producto.nombre;
+  document.getElementById('ap-lista-productos').style.display = 'none';
+  document.getElementById('ap-producto-seleccionado').textContent = `Stock disponible en esta sede: ${ESTADO.inventarioSede[productoId] ?? 0}`;
+  document.getElementById('ap-monto-total').value = producto.precio;
+}
+
+async function crearApartado(){
+  const msg = document.getElementById('ap-nuevo-msg');
+  const clienteId = document.getElementById('ap-cliente-id-seleccionado').value;
+  const productoId = document.getElementById('ap-producto-id').value;
+  const cantidad = parseInt(document.getElementById('ap-cantidad').value) || 1;
+  const montoTotal = parseFloat(document.getElementById('ap-monto-total').value);
+  const abonoInicial = parseFloat(document.getElementById('ap-abono-inicial').value) || 0;
+  const nota = document.getElementById('ap-nota').value.trim();
+
+  if(!clienteId){ msg.innerHTML = `<div class="msg err">Selecciona o crea un cliente.</div>`; return; }
+  if(!productoId){ msg.innerHTML = `<div class="msg err">Selecciona un producto.</div>`; return; }
+  if(!montoTotal || montoTotal <= 0){ msg.innerHTML = `<div class="msg err">Ingresa un monto total válido.</div>`; return; }
+  if(abonoInicial > montoTotal){ msg.innerHTML = `<div class="msg err">El abono inicial no puede ser mayor al monto total.</div>`; return; }
+
+  const stock = ESTADO.inventarioSede[productoId] ?? 0;
+  if(cantidad > stock){ msg.innerHTML = `<div class="msg err">No hay suficiente stock en esta sede (disponible: ${stock}).</div>`; return; }
+
+  let pago = null;
+  if(abonoInicial > 0){
+    pago = datosMonedaCaja('apa', abonoInicial);
+    if(pago.error){ msg.innerHTML = `<div class="msg err">${pago.error}</div>`; return; }
+  }
+
+  const { data: apartado, error } = await sb.from('apartados').insert({
+    sede_id: ESTADO.sedeSeleccionada, cliente_id: clienteId, producto_id: productoId,
+    cantidad, monto_total: montoTotal, monto_abonado: abonoInicial, saldo_pendiente: montoTotal - abonoInicial,
+    nota: nota || null, created_by: ESTADO.perfil.id
+  }).select().single();
+  if(error){ msg.innerHTML = `<div class="msg err">Error: ${error.message}</div>`; return; }
+
+  // Reservar el producto: se descuenta del inventario disponible para que no se venda a otro cliente
+  await sb.from('inventario').update({ cantidad: stock - cantidad, updated_at: new Date().toISOString() })
+    .eq('sede_id', ESTADO.sedeSeleccionada).eq('producto_id', productoId);
+  await sb.from('movimientos_inventario').insert({
+    sede_id: ESTADO.sedeSeleccionada, producto_id: productoId, tipo: 'ajuste', cantidad,
+    nota: `Reservado por apartado${nota ? ' — ' + nota : ''}`, referencia_id: apartado.id, created_by: ESTADO.perfil.id
+  });
+
+  if(abonoInicial > 0){
+    const { data: caja } = await sb.from('cajas').select('*').eq('sede_id', ESTADO.sedeSeleccionada).single();
+    if(caja){
+      const nombreCliente = ESTADO.clientes.find(c=>c.id===clienteId)?.nombre_completo || null;
+      await sb.from('movimientos_caja').insert({
+        caja_id: caja.id, sede_id: ESTADO.sedeSeleccionada, tipo: 'ingreso_abono', monto: abonoInicial,
+        moneda: pago.moneda, metodo_pago: pago.metodo, monto_original: pago.montoOriginal, tasa_cambio: pago.tasa,
+        descripcion: `Abono inicial de apartado${nombreCliente ? ' — ' + nombreCliente : ''}`,
+        referencia_id: apartado.id, created_by: ESTADO.perfil.id
+      });
+      await sb.from('cajas').update({ saldo_actual: Number(caja.saldo_actual) + abonoInicial }).eq('id', caja.id);
+    }
+  }
+
+  msg.innerHTML = `<div class="msg ok">Apartado registrado.</div>`;
+  renderApartados();
+}
+
+function abrirModalAbonoApartado(apartadoId, saldo){
+  document.getElementById('modal-contenido').innerHTML = `
+    <h3>Registrar abono a apartado</h3>
+    <div id="abono-ap-modal-msg"></div>
+    <div class="form-row"><label>Saldo pendiente actual</label><input type="text" value="${money(saldo)}" disabled></div>
+    <div class="form-row"><label>Monto del abono (en dólares)</label><input type="number" id="monto-abono-ap" min="0.01" max="${saldo}" step="0.01" oninput="mostrarEquivalenciaGenerica('apab','monto-abono-ap')"></div>
+    ${bloqueMoneda('apab', 'monto-abono-ap')}
+    <div class="acciones">
+      <button class="btn secundario" onclick="cerrarModal()">Cancelar</button>
+      <button class="btn" onclick="confirmarAbonoApartado('${apartadoId}', ${saldo})">Registrar abono</button>
+    </div>
+  `;
+  document.getElementById('modal-bg').classList.add('activo');
+  actualizarMetodosGenerico('apab');
+}
+
+async function confirmarAbonoApartado(apartadoId, saldoActual){
+  const msg = document.getElementById('abono-ap-modal-msg');
+  const monto = parseFloat(document.getElementById('monto-abono-ap').value);
+  if(!monto || monto <= 0 || monto > saldoActual){ msg.innerHTML = `<div class="msg err">Monto inválido.</div>`; return; }
+
+  const pago = datosMonedaCaja('apab', monto);
+  if(pago.error){ msg.innerHTML = `<div class="msg err">${pago.error}</div>`; return; }
+
+  const { data: apartado } = await sb.from('apartados').select('*').eq('id', apartadoId).single();
+  const nuevoAbonado = Number(apartado.monto_abonado) + monto;
+  const nuevoSaldo = Number(apartado.monto_total) - nuevoAbonado;
+  await sb.from('apartados').update({ monto_abonado: nuevoAbonado, saldo_pendiente: nuevoSaldo }).eq('id', apartadoId);
+
+  const { data: caja } = await sb.from('cajas').select('*').eq('sede_id', ESTADO.sedeSeleccionada).single();
+  if(caja){
+    const nombreCliente = ESTADO.clientes.find(c=>c.id===apartado.cliente_id)?.nombre_completo || null;
+    await sb.from('movimientos_caja').insert({
+      caja_id: caja.id, sede_id: ESTADO.sedeSeleccionada, tipo: 'ingreso_abono', monto,
+      moneda: pago.moneda, metodo_pago: pago.metodo, monto_original: pago.montoOriginal, tasa_cambio: pago.tasa,
+      descripcion: `Abono a apartado${nombreCliente ? ' — ' + nombreCliente : ''}`,
+      referencia_id: apartadoId, created_by: ESTADO.perfil.id
+    });
+    await sb.from('cajas').update({ saldo_actual: Number(caja.saldo_actual) + monto }).eq('id', caja.id);
+  }
+
+  cerrarModal();
+  renderApartados();
+}
+
+async function confirmarVentaApartado(apartadoId){
+  if(!confirm('¿Convertir este apartado en una venta? El producto ya está reservado, así que no se vuelve a descontar del inventario. Si queda saldo pendiente, se crea una cuenta por cobrar.')) return;
+
+  const { data: apartado } = await sb.from('apartados').select('*').eq('id', apartadoId).single();
+  const { data: producto } = await sb.from('productos').select('*').eq('id', apartado.producto_id).single();
+
+  const modalidad = apartado.saldo_pendiente > 0.01 ? 'credito_directo' : 'contado';
+  const estadoVenta = apartado.saldo_pendiente > 0.01 ? 'pagada_parcial' : 'pagada_completa';
+
+  const { data: venta, error } = await sb.from('ventas').insert({
+    sede_id: apartado.sede_id, cliente_id: apartado.cliente_id, modalidad, estado: estadoVenta,
+    total: apartado.monto_total, monto_pagado: apartado.monto_abonado,
+    nota: 'Venta generada desde un apartado', created_by: ESTADO.perfil.id
+  }).select().single();
+  if(error){ alert('Error: ' + error.message); return; }
+
+  await sb.from('venta_items').insert({
+    venta_id: venta.id, producto_id: apartado.producto_id, cantidad: apartado.cantidad,
+    precio_unitario: Number(producto.precio), subtotal: apartado.monto_total
+  });
+
+  if(apartado.saldo_pendiente > 0.01){
+    const { data: cxc } = await sb.from('cuentas_por_cobrar').insert({
+      venta_id: venta.id, sede_id: apartado.sede_id, cliente_id: apartado.cliente_id,
+      monto_total: apartado.monto_total, saldo_pendiente: apartado.saldo_pendiente, estado: estadoVenta
+    }).select().single();
+    if(apartado.monto_abonado > 0 && cxc){
+      await sb.from('abonos').insert({
+        cuenta_por_cobrar_id: cxc.id, monto: apartado.monto_abonado, nota: 'Abonos hechos durante el apartado',
+        created_by: ESTADO.perfil.id
+      });
+    }
+  }
+
+  await sb.from('apartados').update({ estado: 'confirmado', resuelto_at: new Date().toISOString() }).eq('id', apartadoId);
+
+  alert('Apartado convertido en venta correctamente.');
+  renderApartados();
+}
+
+async function cancelarApartado(apartadoId){
+  if(!confirm('¿Cancelar este apartado? El producto reservado vuelve al inventario disponible. Si ya había un abono, el dinero se queda en caja — tú decides aparte si hay que devolverlo.')) return;
+
+  const { data: apartado } = await sb.from('apartados').select('*').eq('id', apartadoId).single();
+
+  const { data: invRow } = await sb.from('inventario').select('*').eq('sede_id', apartado.sede_id).eq('producto_id', apartado.producto_id).maybeSingle();
+  if(invRow){
+    await sb.from('inventario').update({ cantidad: Number(invRow.cantidad) + Number(apartado.cantidad), updated_at: new Date().toISOString() }).eq('id', invRow.id);
+  } else {
+    await sb.from('inventario').insert({ sede_id: apartado.sede_id, producto_id: apartado.producto_id, cantidad: apartado.cantidad });
+  }
+  await sb.from('movimientos_inventario').insert({
+    sede_id: apartado.sede_id, producto_id: apartado.producto_id, tipo: 'ajuste', cantidad: apartado.cantidad,
+    nota: 'Devuelto al inventario por cancelación de apartado', referencia_id: apartadoId, created_by: ESTADO.perfil.id
+  });
+
+  await sb.from('apartados').update({ estado: 'cancelado', resuelto_at: new Date().toISOString() }).eq('id', apartadoId);
+  renderApartados();
+}
+
+async function abrirHistorialApartado(apartadoId){
+  const { data: apartado } = await sb.from('apartados').select('*, clientes(nombre_completo, telefono, cedula), productos(nombre)').eq('id', apartadoId).single();
+  const { data: pagos } = await sb.from('movimientos_caja').select('*').eq('referencia_id', apartadoId).order('created_at', {ascending:false});
+
+  document.getElementById('modal-contenido').innerHTML = `
+    <h3>Historial de ${apartado.clientes?.nombre_completo||'cliente'} — ${apartado.productos?.nombre||''}</h3>
+    <div class="stock">${apartado.clientes?.cedula ? 'CI: '+apartado.clientes.cedula+' — ' : ''}${apartado.clientes?.telefono ? 'Tel: '+apartado.clientes.telefono : ''}</div>
+    ${apartado.nota ? `<div class="stock" style="margin-top:6px;">Nota: ${apartado.nota}</div>` : ''}
+    <div class="kpis" style="margin-top:10px;">
+      <div class="kpi"><div class="label">Monto total</div><div class="valor">${money(apartado.monto_total)}</div></div>
+      <div class="kpi verde"><div class="label">Total abonado</div><div class="valor">${money(apartado.monto_abonado)}</div></div>
+      <div class="kpi rojo"><div class="label">Saldo pendiente</div><div class="valor">${money(apartado.saldo_pendiente)}</div></div>
+    </div>
+    <table style="margin-top:10px;">
+      <thead><tr><th>Fecha</th><th>Monto</th><th>Moneda/Forma</th></tr></thead>
+      <tbody>
+        ${(pagos||[]).map(m=>`<tr><td>${fecha(m.created_at)}</td><td>${money(m.monto)}</td><td>${m.moneda}${m.moneda!=='USD'?` (${fmtMoneda(m.moneda, m.monto_original)})`:''} — ${m.metodo_pago}</td></tr>`).join('') || `<tr><td colspan="3" class="empty">Sin pagos todavía</td></tr>`}
+      </tbody>
+    </table>
+    <div class="acciones"><button class="btn secundario" onclick="cerrarModal()">Cerrar</button></div>
+  `;
+  document.getElementById('modal-bg').classList.add('activo');
 }
 
 /* =========================================================
@@ -2237,21 +2576,17 @@ function tablaMultimoneda(movimientos, notaExtra){
     <div class="card">
       <h3>💱 Panel multimoneda — cuánto hay de cada tipo</h3>
       <div class="stock" style="margin-bottom:10px;">Desglose por moneda y forma de pago, en la moneda en que realmente se recibió/pagó (sin convertir).${notaExtra ? ' ' + notaExtra : ''}</div>
-      <table>
-        <thead><tr><th>Moneda</th><th>Forma de pago</th><th>Ingresos</th><th>Egresos</th><th>Neto</th></tr></thead>
-        <tbody>
-          ${gruposOrdenados.map(g=>{
-            const neto = g.ingresos - g.egresos;
-            return `<tr>
-              <td>${g.moneda}</td>
-              <td>${NOMBRES_METODO_ICONO[g.metodo]||''} ${g.metodo}</td>
-              <td style="color:var(--verde)">${fmtMoneda(g.moneda, g.ingresos)}</td>
-              <td style="color:var(--rojo)">${fmtMoneda(g.moneda, g.egresos)}</td>
-              <td style="font-weight:600;">${fmtMoneda(g.moneda, neto)}</td>
-            </tr>`;
-          }).join('') || `<tr><td colspan="5" class="empty">Sin movimientos todavía</td></tr>`}
-        </tbody>
-      </table>
+      <div class="kpis" style="margin-bottom:0;">
+        ${gruposOrdenados.map(g=>{
+          const neto = g.ingresos - g.egresos;
+          return `
+            <div class="kpi ${neto >= 0 ? 'verde' : 'rojo'}">
+              <div class="label">${g.moneda} — ${NOMBRES_METODO_ICONO[g.metodo]||''} ${g.metodo}</div>
+              <div class="valor">${fmtMoneda(g.moneda, neto)}</div>
+              <div class="stock" style="margin-top:8px;">Ingresos: ${fmtMoneda(g.moneda, g.ingresos)}<br>Egresos: ${fmtMoneda(g.moneda, g.egresos)}</div>
+            </div>`;
+        }).join('') || `<div class="empty">Sin movimientos todavía</div>`}
+      </div>
     </div>
   `;
 }
@@ -2260,11 +2595,12 @@ function tablaMovimientosRecientes(movimientos, conColumnaSede){
   return `
     <div class="card">
       <h3>Movimientos recientes</h3>
+      <div class="form-row"><input type="text" id="buscar-mov-caja" placeholder="Buscar por cliente, descripción, tipo o moneda..." oninput="filtrarMovimientosCajaPorTexto(this.value)"></div>
       <table>
         <thead><tr><th>Fecha</th>${conColumnaSede?'<th>Sede</th>':''}<th>Tipo</th><th>Descripción</th><th>Moneda/Forma</th><th>Monto</th></tr></thead>
-        <tbody>
+        <tbody id="tbody-movimientos-caja">
           ${(movimientos||[]).slice(0,60).map(m=>`
-            <tr>
+            <tr data-busq="${((m.descripcion||'')+' '+m.tipo+' '+(m.moneda||'')+' '+(m.metodo_pago||'')+' '+(conColumnaSede && m.sede_id ? sedeNombre(m.sede_id) : '')).toLowerCase()}">
               <td>${fecha(m.created_at)}</td>
               ${conColumnaSede?`<td>${m.sede_id ? sedeNombre(m.sede_id) : 'Matriz'}</td>`:''}
               <td>${m.tipo.replace(/_/g,' ')}</td>
@@ -2279,6 +2615,13 @@ function tablaMovimientosRecientes(movimientos, conColumnaSede){
       </table>
     </div>
   `;
+}
+
+function filtrarMovimientosCajaPorTexto(texto){
+  const t = texto.trim().toLowerCase();
+  document.querySelectorAll('#tbody-movimientos-caja tr[data-busq]').forEach(tr=>{
+    tr.style.display = tr.dataset.busq.includes(t) ? '' : 'none';
+  });
 }
 
 async function renderCaja(){
@@ -2923,9 +3266,9 @@ function abrirModalAbono(cxcId, saldo){
     <h3>Registrar abono</h3>
     <div id="abono-modal-msg"></div>
     <div class="form-row"><label>Saldo pendiente actual</label><input type="text" value="${money(saldo)}" disabled></div>
-    <div class="form-row"><label>Monto del abono</label><input type="number" id="monto-abono" min="0.01" max="${saldo}" step="0.01"></div>
+    <div class="form-row"><label>Monto del abono (en dólares — el equivalente en la moneda que elijas abajo se calcula solo)</label><input type="number" id="monto-abono" min="0.01" max="${saldo}" step="0.01" oninput="mostrarEquivalenciaGenerica('cxca','monto-abono')"></div>
     <div class="form-row"><label>Nota (opcional)</label><input type="text" id="nota-abono"></div>
-    ${bloqueMoneda('cxca')}
+    ${bloqueMoneda('cxca', 'monto-abono')}
     <div class="acciones">
       <button class="btn secundario" onclick="cerrarModal()">Cancelar</button>
       <button class="btn" onclick="confirmarAbono('${cxcId}', ${saldo})">Registrar abono</button>
@@ -3005,10 +3348,11 @@ async function confirmarAbono(cxcId, saldoActual){
 
   const { data: caja } = await sb.from('cajas').select('*').eq('sede_id', ESTADO.sedeSeleccionada).single();
   if(caja){
+    const nombreClienteCxc = ESTADO.clientes.find(c=>c.id===cxcActualizada?.cliente_id)?.nombre_completo || null;
     await sb.from('movimientos_caja').insert({
       caja_id: caja.id, sede_id: ESTADO.sedeSeleccionada, tipo: 'ingreso_abono', monto,
       moneda: pago.moneda, metodo_pago: pago.metodo, monto_original: pago.montoOriginal, tasa_cambio: pago.tasa,
-      descripcion: nota || 'Abono a cuenta por cobrar', referencia_id: cxcId, created_by: ESTADO.perfil.id
+      descripcion: `${nota || 'Abono a cuenta por cobrar'}${nombreClienteCxc ? ' — ' + nombreClienteCxc : ''}`, referencia_id: cxcId, created_by: ESTADO.perfil.id
     });
     await sb.from('cajas').update({ saldo_actual: Number(caja.saldo_actual) + monto }).eq('id', caja.id);
   }
@@ -3125,9 +3469,9 @@ function abrirModalAbonoPagar(cxpId, saldo){
     <h3>Registrar abono a proveedor</h3>
     <div id="abono-pagar-modal-msg"></div>
     <div class="form-row"><label>Saldo pendiente actual</label><input type="text" value="${money(saldo)}" disabled></div>
-    <div class="form-row"><label>Monto del abono</label><input type="number" id="monto-abono-pagar" min="0.01" max="${saldo}" step="0.01"></div>
+    <div class="form-row"><label>Monto del abono (en dólares — el equivalente en la moneda que elijas abajo se calcula solo)</label><input type="number" id="monto-abono-pagar" min="0.01" max="${saldo}" step="0.01" oninput="mostrarEquivalenciaGenerica('cxpa','monto-abono-pagar')"></div>
     <div class="form-row"><label>Nota (opcional)</label><input type="text" id="nota-abono-pagar"></div>
-    ${bloqueMoneda('cxpa')}
+    ${bloqueMoneda('cxpa', 'monto-abono-pagar')}
     ${bloqueOrigenCaja('cxpa')}
     <div class="acciones">
       <button class="btn secundario" onclick="cerrarModal()">Cancelar</button>
@@ -4061,7 +4405,7 @@ async function renderClientes(){
         <table>
           <thead><tr><th>Nombre</th><th>Cédula</th><th>Teléfono</th><th></th></tr></thead>
           <tbody id="tbody-clientes">
-            ${(clientes||[]).map(c=>`<tr data-busq="${(c.nombre_completo+' '+(c.cedula||'')+' '+(c.telefono||'')).toLowerCase()}"><td>${c.nombre_completo}</td><td>${c.cedula||'—'}</td><td>${c.telefono||'—'}</td><td><button class="btn chico secundario" onclick='abrirEditarCliente(${JSON.stringify(c)})'>Editar</button></td></tr>`).join('') || `<tr><td colspan="4" class="empty">Sin clientes aún</td></tr>`}
+            ${(clientes||[]).map(c=>`<tr data-busq="${(c.nombre_completo+' '+(c.cedula||'')+' '+(c.telefono||'')).toLowerCase()}"><td>${c.nombre_completo}</td><td>${c.cedula||'—'}</td><td>${c.telefono||'—'}</td><td><button class="btn chico secundario" onclick='abrirEditarCliente(${JSON.stringify(c)})'>Editar</button> <button class="btn chico secundario" onclick="eliminarCliente('${c.id}', '${c.nombre_completo.replace(/'/g,"\\'")}')">🗑️ Eliminar</button></td></tr>`).join('') || `<tr><td colspan="4" class="empty">Sin clientes aún</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -4108,6 +4452,34 @@ async function guardarEdicionCliente(clienteId){
   const { error } = await sb.from('clientes').update({ nombre_completo, cedula, telefono, email, direccion }).eq('id', clienteId);
   if(error){ msg.innerHTML = `<div class="msg err">Error: ${error.message}</div>`; return; }
   cerrarModal();
+  await cargarProductosYClientes();
+  renderClientes();
+}
+
+async function eliminarCliente(clienteId, nombreCliente){
+  const [ventasRes, cxcRes, motosanRes, paRes] = await Promise.all([
+    sb.from('ventas').select('id', {count:'exact', head:true}).eq('cliente_id', clienteId),
+    sb.from('cuentas_por_cobrar').select('id', {count:'exact', head:true}).eq('cliente_id', clienteId),
+    sb.from('motosan_participantes').select('id', {count:'exact', head:true}).eq('cliente_id', clienteId),
+    sb.from('planes_ahorro').select('id', {count:'exact', head:true}).eq('cliente_id', clienteId),
+  ]);
+
+  const bloqueos = [];
+  if(ventasRes.count) bloqueos.push(`${ventasRes.count} venta(s)`);
+  if(cxcRes.count) bloqueos.push(`${cxcRes.count} cuenta(s) por cobrar`);
+  if(motosanRes.count) bloqueos.push(`${motosanRes.count} inscripción(es) en Motosán`);
+  if(paRes.count) bloqueos.push(`${paRes.count} plan(es) de ahorro`);
+
+  if(bloqueos.length){
+    alert(`No se puede eliminar a ${nombreCliente} porque tiene ${bloqueos.join(', ')} asociada(s). Primero tienes que resolver eso.`);
+    return;
+  }
+
+  if(!confirm(`¿Eliminar a ${nombreCliente}? No tiene ningún movimiento asociado. Esta acción no se puede deshacer.`)) return;
+
+  const { error } = await sb.from('clientes').delete().eq('id', clienteId);
+  if(error){ alert('Error al eliminar: ' + error.message); return; }
+
   await cargarProductosYClientes();
   renderClientes();
 }
@@ -4159,6 +4531,7 @@ async function renderContenidoTienda(){
   (filas||[]).forEach(f => valores[f.clave] = f.valor);
 
   const { data: sedes } = await sb.from('sedes').select('*').eq('activa', true).order('nombre');
+  const { data: videos } = await sb.from('videos_tienda').select('*').order('orden');
 
   cont.innerHTML = `
     <div id="contenido-msg"></div>
@@ -4173,6 +4546,28 @@ async function renderContenidoTienda(){
         </div>
       `).join('')}
       <button class="btn secundario chico" onclick="guardarDireccionesSedes()">Guardar direcciones</button>
+    </div>
+
+    <div class="card">
+      <h3>🎬 Videos de Instagram y TikTok</h3>
+      <div class="stock" style="margin-bottom:12px;">Pega el link de un Reel de Instagram o un video de TikTok — se muestran incrustados en la tienda tal cual, sin publicidad de otras cuentas.</div>
+      <div id="video-msg"></div>
+      <div class="inline-2">
+        <input type="text" id="nv-url" placeholder="https://www.instagram.com/reel/... o https://www.tiktok.com/@usuario/video/...">
+        <button class="btn chico" onclick="agregarVideoTienda()">+ Agregar video</button>
+      </div>
+      <table style="margin-top:12px;">
+        <thead><tr><th>Plataforma</th><th>Link</th><th></th></tr></thead>
+        <tbody>
+          ${(videos||[]).map(v=>`
+            <tr>
+              <td>${v.plataforma === 'instagram' ? '📸 Instagram' : '🎵 TikTok'}</td>
+              <td style="max-width:320px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"><a href="${v.url}" target="_blank" style="color:var(--carbon);">${v.url}</a></td>
+              <td><button class="btn chico secundario" onclick="eliminarVideoTienda('${v.id}')">🗑️ Quitar</button></td>
+            </tr>
+          `).join('') || `<tr><td colspan="3" class="empty">Sin videos agregados aún</td></tr>`}
+        </tbody>
+      </table>
     </div>
 
     ${CAMPOS_CONTENIDO.map(grupo => `
@@ -4190,6 +4585,32 @@ async function renderContenidoTienda(){
     `).join('')}
     <button class="btn" onclick="guardarContenidoTienda()">Guardar todos los cambios</button>
   `;
+}
+
+async function agregarVideoTienda(){
+  const msg = document.getElementById('video-msg');
+  const url = document.getElementById('nv-url').value.trim();
+  if(!url){ msg.innerHTML = `<div class="msg err">Pega un link primero.</div>`; return; }
+
+  let plataforma = null;
+  if(/instagram\.com/i.test(url)) plataforma = 'instagram';
+  else if(/tiktok\.com/i.test(url)) plataforma = 'tiktok';
+  if(!plataforma){ msg.innerHTML = `<div class="msg err">Ese link no parece ser de Instagram ni de TikTok.</div>`; return; }
+
+  const { data: existentes } = await sb.from('videos_tienda').select('orden').order('orden', {ascending:false}).limit(1);
+  const siguienteOrden = existentes?.[0] ? existentes[0].orden + 1 : 0;
+
+  const { error } = await sb.from('videos_tienda').insert({ url, plataforma, orden: siguienteOrden, created_by: ESTADO.perfil.id });
+  if(error){ msg.innerHTML = `<div class="msg err">Error: ${error.message}</div>`; return; }
+
+  document.getElementById('nv-url').value = '';
+  msg.innerHTML = `<div class="msg ok">Video agregado.</div>`;
+  renderContenidoTienda();
+}
+
+async function eliminarVideoTienda(id){
+  await sb.from('videos_tienda').delete().eq('id', id);
+  renderContenidoTienda();
 }
 
 async function guardarDireccionesSedes(){
