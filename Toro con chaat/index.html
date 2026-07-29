@@ -163,6 +163,9 @@
     #scroll-controles button{width:40px; height:40px; font-size:16px;}
   }
 
+  .video-embed-wrap{min-height:730px; display:flex; align-items:flex-start; justify-content:center; width:100%;}
+  .video-embed-wrap iframe{min-height:730px !important;}
+
   .motosan-grupo{background:var(--negro2); border:1px solid var(--borde); border-radius:14px; padding:22px; margin-bottom:18px;}
   .motosan-grupo h3{font-size:17px; margin-bottom:2px;}
   .motosan-grupo .sede-tag{color:var(--carbon); font-size:12.5px; margin-bottom:16px;}
@@ -324,7 +327,7 @@
 
 <nav class="filtros" id="filtros">
   <div class="filtros-inner" id="filtros-inner">
-    <button class="chip activo" data-cat="todas">Todas</button>
+    <button class="chip activo" data-cat="todas">Destacados</button>
   </div>
   <div class="filtros-inner" id="filtros-etiquetas" style="display:none; margin-top:10px;"></div>
 </nav>
@@ -338,7 +341,7 @@
 <section class="catalogo wrap" id="videos-seccion" style="display:none; padding-top:10px;">
   <h2>🎬 Síguenos</h2>
   <div class="sub">Nuestros últimos videos en Instagram y TikTok.</div>
-  <div id="videos-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(300px,1fr)); gap:20px;"></div>
+  <div id="videos-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(300px,1fr)); gap:20px; align-items:start;"></div>
 </section>
 
 <section class="franja">
@@ -567,12 +570,27 @@ function renderFiltrosEtiquetas(listaBase){
     etiquetas.map(t => `<button class="chip ${ETIQUETA_ACTIVA===t?'activo':''}" onclick="seleccionarEtiqueta('${t.replace(/'/g,"\\'")}', this)">${t}</button>`).join('');
 }
 
+function ordenPrioridadDestacado(p){
+  const nombre = (p.nombre||'').toUpperCase();
+  const cat = p.categorias?.nombre || '';
+  if(nombre.startsWith('MOTOCICLETA')) return 0;
+  if(nombre.startsWith('MONOPATIN') || nombre.startsWith('MONOPATÍN')) return 1;
+  if(cat === 'Motos') return 2;
+  if(cat === 'Cascos') return 3;
+  if(cat === 'Lubricantes') return 4;
+  return 5;
+}
+
 function renderProductos(){
   const grid = document.getElementById('grid-productos');
   const sub = document.getElementById('catalogo-sub');
 
+  // Vista por defecto ("Todas"): motos primero, luego monopatines, luego cascos — sin repuestos.
+  // Para ver repuestos, el cliente tiene que darle al filtro "Repuestos" a propósito.
   const listaPorCategoria = CATEGORIA_ACTIVA === 'todas'
     ? TODOS_LOS_PRODUCTOS
+        .filter(p => (p.categorias?.nombre || '') !== 'Repuestos')
+        .sort((a,b) => ordenPrioridadDestacado(a) - ordenPrioridadDestacado(b) || a.nombre.localeCompare(b.nombre))
     : TODOS_LOS_PRODUCTOS.filter(p => p.categoria_id === CATEGORIA_ACTIVA);
 
   renderFiltrosEtiquetas(listaPorCategoria);
@@ -589,7 +607,6 @@ function renderProductos(){
   }
 
   grid.innerHTML = lista.map(p => {
-    const colores = COLORES_POR_PRODUCTO[p.id] || [];
     const fotos = FOTOS_POR_PRODUCTO[p.id] || [];
     const imagenInicial = p.imagen_url || '';
     return `
@@ -607,15 +624,6 @@ function renderProductos(){
         ` : ''}
         <h3 style="cursor:pointer;" onclick="abrirDetalleProducto('${p.id}')">${p.nombre}</h3>
         <p>${p.descripcion || ''}</p>
-        ${colores.length ? `
-          <div class="color-swatches" id="swatches-${p.id}">
-            ${colores.map(c => `
-              <button class="swatch ${!c.disponible ? 'agotado' : ''}" style="background:${c.hex_color};"
-                title="${c.nombre_color}${c.disponible ? '' : ' — agotado'}"
-                onclick="seleccionarColor('${p.id}', '${c.id}')" data-color-id="${c.id}"></button>
-            `).join('')}
-          </div>
-        ` : ''}
         ${Number(p.precio) > 0 ? `<div class="card-precio">${money(p.precio)}</div>` : `<div class="card-precio consultar">Precio a consultar</div>`}
         <a class="card-btn" href="${linkWhatsapp('Hola, me interesa: ' + p.nombre)}" id="btn-wa-${p.id}" target="_blank" rel="noopener">Preguntar por este producto</a>
       </div>
@@ -626,7 +634,6 @@ function renderProductos(){
 function abrirDetalleProducto(productoId){
   const p = TODOS_LOS_PRODUCTOS.find(x => x.id === productoId);
   if(!p) return;
-  const colores = COLORES_POR_PRODUCTO[p.id] || [];
   const fotos = FOTOS_POR_PRODUCTO[p.id] || [];
   const imagenInicial = p.imagen_url || (fotos[0]?.imagen_url) || '';
 
@@ -643,15 +650,6 @@ function abrirDetalleProducto(productoId){
           <div class="galeria-mini" style="margin-bottom:18px;">
             ${imagenInicial ? `<img src="${imagenInicial}" class="mini activa" onclick="cambiarFotoDetalle('${imagenInicial}', this)">` : ''}
             ${fotos.map(f => `<img src="${f.imagen_url}" class="mini" onclick="cambiarFotoDetalle('${f.imagen_url}', this)">`).join('')}
-          </div>
-        ` : ''}
-        ${colores.length ? `
-          <div class="color-swatches">
-            ${colores.map(c => `
-              <button class="swatch ${!c.disponible ? 'agotado' : ''}" style="background:${c.hex_color};"
-                title="${c.nombre_color}${c.disponible ? '' : ' — agotado'}"
-                onclick="cambiarFotoDetalle('${c.imagen_url || imagenInicial}', this)"></button>
-            `).join('')}
           </div>
         ` : ''}
         ${Number(p.precio) > 0 ? `<div class="detalle-precio">${money(p.precio)}</div>` : `<div class="card-precio consultar" style="margin-bottom:20px;">Precio a consultar</div>`}
@@ -685,26 +683,6 @@ function cambiarFotoPrincipal(productoId, url, el){
   imgWrap.innerHTML = `<img src="${url}" alt="" loading="lazy">` + (catBadge ? catBadge.outerHTML : '');
   el.parentElement.querySelectorAll('.mini').forEach(m=>m.classList.remove('activa'));
   el.classList.add('activa');
-}
-
-function seleccionarColor(productoId, colorId){
-  const color = (COLORES_POR_PRODUCTO[productoId]||[]).find(c => c.id === colorId);
-  if(!color) return;
-
-  const imgWrap = document.getElementById('img-'+productoId);
-  const catBadge = imgWrap.querySelector('.card-cat');
-  if(color.imagen_url){
-    imgWrap.innerHTML = `<img src="${color.imagen_url}" alt="${color.nombre_color}" loading="lazy">` + (catBadge ? catBadge.outerHTML : '');
-  }
-
-  document.querySelectorAll(`#swatches-${productoId} .swatch`).forEach(s => s.classList.remove('activo'));
-  document.querySelector(`#swatches-${productoId} .swatch[data-color-id="${colorId}"]`).classList.add('activo');
-
-  const producto = TODOS_LOS_PRODUCTOS.find(p => p.id === productoId);
-  const btnWa = document.getElementById('btn-wa-'+productoId);
-  if(btnWa && producto){
-    btnWa.href = linkWhatsapp(`Hola, me interesa: ${producto.nombre} en color ${color.nombre_color}${color.disponible ? '' : ' (vi que está agotado, ¿cuándo llega?)'}`);
-  }
 }
 
 /* =========================================================
@@ -774,9 +752,9 @@ async function cargarVideosTienda(){
   seccion.style.display = 'block';
   grid.innerHTML = videos.map(v => {
     if(v.plataforma === 'instagram'){
-      return `<blockquote class="instagram-media" data-instgrm-permalink="${v.url}" data-instgrm-version="14" style="margin:0; width:100%;"></blockquote>`;
+      return `<div class="video-embed-wrap"><blockquote class="instagram-media" data-instgrm-permalink="${v.url}" data-instgrm-version="14" style="margin:0; width:100%; min-width:300px;"></blockquote></div>`;
     }
-    return `<blockquote class="tiktok-embed" cite="${v.url}" style="margin:0 auto; max-width:100%;"><section></section></blockquote>`;
+    return `<div class="video-embed-wrap"><blockquote class="tiktok-embed" cite="${v.url}" style="margin:0 auto; max-width:100%; min-width:300px;"><section></section></blockquote></div>`;
   }).join('');
 
   if(videos.some(v => v.plataforma === 'instagram')){
