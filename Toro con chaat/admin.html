@@ -219,7 +219,7 @@
       <button data-tab="pagar">📤 Cuentas por pagar</button>
       <button data-tab="inventario">📦 Inventario</button>
       <button data-tab="traslados">🔄 Traslados</button>
-      <button data-tab="terceros">🤝 Terceros de confianza</button>
+      <button data-tab="terceros" id="nav-terceros" style="display:none;">🤝 Terceros de confianza</button>
       <button data-tab="productos">🏷️ Productos</button>
       <button data-tab="clientes">👤 Clientes</button>
       <button data-tab="contenido">📝 Contenido de la tienda</button>
@@ -367,6 +367,7 @@ function mostrarApp(){
   actualizarVisibilidadSelectorSede();
 
   document.getElementById('nav-caja-matriz').style.display = ESTADO.perfil.rol === 'admin_general' ? 'block' : 'none';
+  document.getElementById('nav-terceros').style.display = ESTADO.perfil.rol === 'admin_general' ? 'block' : 'none';
 
   document.querySelectorAll('#nav-menu button').forEach(btn=>{
     btn.onclick = () => cambiarTab(btn.dataset.tab);
@@ -576,6 +577,70 @@ async function obtenerCajaOrigen(prefix){
 }
 
 /* =========================================================
+   PAGOS MIXTOS (varias monedas/métodos en un mismo pago) — Ventas
+========================================================= */
+function agregarLineaPagoVenta(){
+  ESTADO.pagosMixtosVenta.push({ moneda: 'USD', metodo: 'Efectivo', monto: 0, tasa: null });
+  renderPagosMixtosVenta();
+}
+
+function quitarLineaPagoVenta(i){
+  ESTADO.pagosMixtosVenta.splice(i,1);
+  renderPagosMixtosVenta();
+}
+
+// campo 'moneda' cambia la estructura (reconstruye); 'monto'/'tasa' solo actualizan el total,
+// sin reconstruir los inputs, para no perder el foco mientras se escribe.
+function actualizarLineaPagoVenta(i, campo, valor){
+  ESTADO.pagosMixtosVenta[i][campo] = valor;
+  if(campo === 'moneda'){
+    ESTADO.pagosMixtosVenta[i].metodo = METODOS_POR_MONEDA[valor][0];
+    renderPagosMixtosVenta();
+  } else {
+    actualizarTotalPagosMixtosVenta();
+  }
+}
+
+function calcularTotalPagosMixtosVenta(){
+  return (ESTADO.pagosMixtosVenta||[]).reduce((s,l)=>{
+    if(!l.monto || l.monto <= 0) return s;
+    const usd = l.moneda === 'USD' ? l.monto : (l.tasa > 0 ? l.monto / l.tasa : 0);
+    return s + usd;
+  }, 0);
+}
+
+function actualizarTotalPagosMixtosVenta(){
+  const el = document.getElementById('pagos-mixtos-total');
+  if(el) el.textContent = money(calcularTotalPagosMixtosVenta());
+}
+
+function renderPagosMixtosVenta(){
+  const div = document.getElementById('pagos-mixtos-lista');
+  if(!div) return;
+  div.innerHTML = (ESTADO.pagosMixtosVenta||[]).map((l,i)=>`
+    <div class="inline-2" style="margin-bottom:6px;">
+      <select onchange="actualizarLineaPagoVenta(${i},'moneda',this.value)">
+        <option value="USD" ${l.moneda==='USD'?'selected':''}>Dólares (USD)</option>
+        <option value="COP" ${l.moneda==='COP'?'selected':''}>Pesos colombianos (COP)</option>
+        <option value="VES" ${l.moneda==='VES'?'selected':''}>Bolívares (VES)</option>
+      </select>
+      <select onchange="actualizarLineaPagoVenta(${i},'metodo',this.value)">
+        ${METODOS_POR_MONEDA[l.moneda].map(m=>`<option value="${m}" ${l.metodo===m?'selected':''}>${m}</option>`).join('')}
+      </select>
+    </div>
+    <div class="inline-2" style="margin-bottom:10px;">
+      <input type="number" min="0" step="0.01" placeholder="Monto en ${l.moneda}" value="${l.monto||''}" oninput="actualizarLineaPagoVenta(${i},'monto',parseFloat(this.value)||0)">
+      ${l.moneda!=='USD'
+        ? `<input type="number" min="0" step="0.01" placeholder="Tasa (1 USD = X)" value="${l.tasa||''}" oninput="actualizarLineaPagoVenta(${i},'tasa',parseFloat(this.value)||0)">`
+        : (ESTADO.pagosMixtosVenta.length>1 ? `<button type="button" class="btn chico secundario" onclick="quitarLineaPagoVenta(${i})">Quitar</button>` : `<span></span>`)
+      }
+    </div>
+    ${l.moneda!=='USD' && ESTADO.pagosMixtosVenta.length>1 ? `<button type="button" class="btn chico secundario" style="margin-bottom:10px;" onclick="quitarLineaPagoVenta(${i})">Quitar esta forma de pago</button>` : ''}
+  `).join('');
+  actualizarTotalPagosMixtosVenta();
+}
+
+/* =========================================================
    VENTAS
 ========================================================= */
 async function renderVentas(){
@@ -585,12 +650,13 @@ async function renderVentas(){
   await cargarProductosYClientes();
 
   const { data: ventas } = await sb.from('ventas')
-    .select('*, clientes(nombre_completo)')
+    .select('*, clientes(nombre_completo, cedula)')
     .eq('sede_id', ESTADO.sedeSeleccionada)
     .order('created_at', {ascending:false})
     .limit(50);
 
   ESTADO.carritoVenta = [];
+  ESTADO.pagosMixtosVenta = [{ moneda: 'USD', metodo: 'Efectivo', monto: 0, tasa: null }];
 
   cont.innerHTML = `
     <div class="grid2">
@@ -629,8 +695,10 @@ async function renderVentas(){
           </div>
         </div>
 
-        <div class="form-row" style="margin-top:14px;"><label>¿Cómo te están pagando?</label></div>
-        ${bloqueMoneda('vt')}
+        <div class="form-row" style="margin-top:14px;"><label>¿Cómo te están pagando? (puedes combinar varias formas)</label></div>
+        <div id="pagos-mixtos-lista"></div>
+        <button type="button" class="btn chico secundario" onclick="agregarLineaPagoVenta()">+ Agregar forma de pago</button>
+        <div class="stock" style="margin-top:6px;">Pagado hasta ahora: <span id="pagos-mixtos-total">$0.00</span></div>
 
         <button class="btn" style="margin-top:10px;" onclick="registrarVenta()">Registrar venta</button>
       </div>
@@ -641,11 +709,12 @@ async function renderVentas(){
           <button class="activo" onclick="filtrarVentasPorModalidad('todas', this)">Todas</button>
           ${Object.entries(MODALIDADES).filter(([k])=>k!=='motosan'&&k!=='plan_ahorro').map(([k,v])=>`<button onclick="filtrarVentasPorModalidad('${k}', this)">${v}</button>`).join('')}
         </div>
+        <div class="form-row" style="margin-top:10px;"><input type="text" id="buscar-venta" placeholder="Buscar por cliente o cédula..." oninput="filtrarVentasPorTexto(this.value)"></div>
         <table>
           <thead><tr><th>Fecha</th><th>Cliente</th><th>Modalidad</th><th>Total</th><th>Estado</th></tr></thead>
           <tbody id="tbody-ventas">
             ${(ventas||[]).map(v=>`
-              <tr data-modalidad="${v.modalidad}">
+              <tr data-modalidad="${v.modalidad}" data-busq="${((v.clientes?.nombre_completo||'')+' '+(v.clientes?.cedula||'')).toLowerCase()}" onclick="abrirDetalleVenta('${v.id}')" style="cursor:pointer;">
                 <td>${fecha(v.created_at)}</td>
                 <td>${v.clientes?.nombre_completo || '—'}</td>
                 <td><span class="badge ${v.modalidad}">${MODALIDADES[v.modalidad]}</span></td>
@@ -659,7 +728,107 @@ async function renderVentas(){
     </div>
   `;
   renderLineasVenta();
-  actualizarMetodosGenerico('vt');
+  renderPagosMixtosVenta();
+}
+
+function filtrarVentasPorTexto(texto){
+  const t = texto.trim().toLowerCase();
+  document.querySelectorAll('#tbody-ventas tr[data-busq]').forEach(tr=>{
+    tr.style.display = tr.dataset.busq.toLowerCase().includes(t) ? '' : 'none';
+  });
+}
+
+async function abrirDetalleVenta(ventaId){
+  const { data: venta } = await sb.from('ventas').select('*, clientes(nombre_completo, cedula, telefono)').eq('id', ventaId).single();
+  const { data: items } = await sb.from('venta_items').select('*, productos(nombre)').eq('venta_id', ventaId);
+  const { data: cxc } = await sb.from('cuentas_por_cobrar').select('*').eq('venta_id', ventaId).maybeSingle();
+  const { data: movCaja } = await sb.from('movimientos_caja').select('*').eq('referencia_id', ventaId);
+
+  document.getElementById('modal-contenido').innerHTML = `
+    <h3>Factura del ${fecha(venta.created_at)}</h3>
+    <div id="detalle-venta-msg"></div>
+    <div class="stock">Cliente: ${venta.clientes?.nombre_completo || 'Sin cliente'} ${venta.clientes?.cedula ? '— CI: '+venta.clientes.cedula : ''} ${venta.clientes?.telefono ? '— Tel: '+venta.clientes.telefono : ''}</div>
+    <div class="stock">Modalidad: ${MODALIDADES[venta.modalidad]} — Estado: <span class="badge ${venta.estado}">${venta.estado.replace('_',' ')}</span></div>
+    <table style="margin-top:10px;">
+      <thead><tr><th>Producto</th><th>Cant.</th><th>Precio</th><th>Subtotal</th><th>Serial / Placa</th></tr></thead>
+      <tbody>
+        ${(items||[]).map(i=>`
+          <tr>
+            <td>${i.productos?.nombre||'—'}</td><td>${i.cantidad}</td><td>${money(i.precio_unitario)}</td><td>${money(i.subtotal)}</td>
+            <td>${i.serial ? `${i.serial} / ${i.placa||'—'}` : '—'}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+    <div class="stock" style="margin-top:10px;">Total: ${money(venta.total)} — Pagado: ${money(venta.monto_pagado)}</div>
+    ${(movCaja||[]).length ? `
+      <div class="stock" style="margin-top:6px;">Pagos registrados en caja:</div>
+      <table>
+        <thead><tr><th>Moneda/Forma</th><th>Monto</th></tr></thead>
+        <tbody>
+          ${(movCaja||[]).map(m=>`<tr><td>${m.moneda} — ${m.metodo_pago}</td><td>${money(m.monto)}</td></tr>`).join('')}
+        </tbody>
+      </table>
+    ` : ''}
+    ${venta.nota ? `<div class="stock" style="margin-top:6px;">Nota: ${venta.nota}</div>` : ''}
+    <div class="acciones">
+      <button class="btn secundario" onclick="cerrarModal()">Cerrar</button>
+      ${venta.estado !== 'anulada' ? `<button class="btn" style="background:var(--rojo);" onclick="anularVenta('${venta.id}')">Anular factura</button>` : ''}
+    </div>
+  `;
+  document.getElementById('modal-bg').classList.add('activo');
+}
+
+async function anularVenta(ventaId){
+  const msg = document.getElementById('detalle-venta-msg');
+
+  const { data: venta } = await sb.from('ventas').select('*').eq('id', ventaId).single();
+  if(!venta || venta.estado === 'anulada'){ return; }
+
+  // Si ya tiene abonos posteriores registrados, no anular automáticamente (podría descuadrar caja)
+  const { data: cxc } = await sb.from('cuentas_por_cobrar').select('*').eq('venta_id', ventaId).maybeSingle();
+  if(cxc){
+    const { count } = await sb.from('abonos').select('*', {count:'exact', head:true}).eq('cuenta_por_cobrar_id', cxc.id);
+    if(count && count > 0){
+      msg.innerHTML = `<div class="msg err">Esta venta ya tiene abonos registrados en Cuentas por cobrar. Reviértelos primero desde ahí antes de anular la factura.</div>`;
+      return;
+    }
+  }
+
+  if(!confirm('¿Anular esta factura? Se devuelve el inventario y se revierte el dinero registrado en caja. Esta acción no se puede deshacer.')) return;
+
+  const { data: items } = await sb.from('venta_items').select('*').eq('venta_id', ventaId);
+  for(const it of (items||[])){
+    const { data: invRow } = await sb.from('inventario').select('*').eq('sede_id', venta.sede_id).eq('producto_id', it.producto_id).maybeSingle();
+    if(invRow){
+      await sb.from('inventario').update({ cantidad: Number(invRow.cantidad) + Number(it.cantidad), updated_at: new Date().toISOString() }).eq('id', invRow.id);
+    } else {
+      await sb.from('inventario').insert({ sede_id: venta.sede_id, producto_id: it.producto_id, cantidad: it.cantidad });
+    }
+    await sb.from('movimientos_inventario').insert({
+      sede_id: venta.sede_id, producto_id: it.producto_id, tipo: 'ajuste', cantidad: it.cantidad,
+      nota: 'Reverso por anulación de factura', referencia_id: ventaId, created_by: ESTADO.perfil.id
+    });
+  }
+
+  const { data: movCaja } = await sb.from('movimientos_caja').select('*').eq('referencia_id', ventaId);
+  for(const m of (movCaja||[])){
+    const { data: caja } = await sb.from('cajas').select('*').eq('id', m.caja_id).single();
+    if(caja){
+      const nuevoSaldo = m.tipo.startsWith('ingreso') ? Number(caja.saldo_actual) - Number(m.monto) : Number(caja.saldo_actual) + Number(m.monto);
+      await sb.from('cajas').update({ saldo_actual: nuevoSaldo }).eq('id', caja.id);
+    }
+    await sb.from('movimientos_caja').delete().eq('id', m.id);
+  }
+
+  if(cxc){
+    await sb.from('cuentas_por_cobrar').update({ estado: 'anulada', saldo_pendiente: 0 }).eq('id', cxc.id);
+  }
+
+  await sb.from('ventas').update({ estado: 'anulada' }).eq('id', ventaId);
+
+  cerrarModal();
+  renderVentas();
 }
 
 async function cargarProductosYClientes(){
@@ -668,9 +837,19 @@ async function cargarProductosYClientes(){
   const { data: clientes } = await sb.from('clientes').select('*').order('nombre_completo');
   ESTADO.clientes = clientes || [];
 
+  if(!ESTADO.categoriaMotosId){
+    const { data: catMotos } = await sb.from('categorias').select('id').eq('nombre', 'Motos').maybeSingle();
+    ESTADO.categoriaMotosId = catMotos?.id || null;
+  }
+
   const { data: invRows } = await sb.from('inventario').select('*').eq('sede_id', ESTADO.sedeSeleccionada);
   ESTADO.inventarioSede = {};
   (invRows||[]).forEach(r => ESTADO.inventarioSede[r.producto_id] = r.cantidad);
+}
+
+function esProductoMoto(productoId){
+  const p = ESTADO.productos.find(x=>x.id===productoId);
+  return !!(p && ESTADO.categoriaMotosId && p.categoria_id === ESTADO.categoriaMotosId);
 }
 
 function buscarProductoInput(txt){
@@ -701,12 +880,14 @@ function buscarProductoInput(txt){
 function agregarProductoAVenta(productoId){
   const producto = ESTADO.productos.find(p=>p.id===productoId);
   if(!producto) return;
-  const existente = ESTADO.carritoVenta.find(l=>l.producto_id===productoId);
+  const esMoto = esProductoMoto(productoId);
+  const existente = !esMoto && ESTADO.carritoVenta.find(l=>l.producto_id===productoId);
   if(existente){ existente.cantidad += 1; }
   else {
     ESTADO.carritoVenta.push({
       producto_id: producto.id, nombre: producto.nombre,
-      precio_unitario: Number(producto.precio), cantidad: 1
+      precio_unitario: Number(producto.precio), cantidad: 1,
+      esMoto, serial: '', placa: ''
     });
   }
   document.getElementById('buscar-producto').value = '';
@@ -729,10 +910,10 @@ function renderLineasVenta(){
   } else {
     div.innerHTML = ESTADO.carritoVenta.map((l,i)=>`
       <div class="linea-item">
-        <div>${l.nombre}</div>
+        <div>${l.nombre}${l.esMoto ? ' <span class="stock">(moto — serial y placa obligatorios)</span>' : ''}</div>
         <div style="display:flex; align-items:center; gap:8px;">
           <span style="font-size:11px; color:var(--carbon);">Cant.</span>
-          <input type="number" min="1" value="${l.cantidad}" style="width:50px; padding:5px; background:var(--negro3); border:1px solid var(--borde); border-radius:6px; color:#fff;"
+          <input type="number" min="1" value="${l.cantidad}" ${l.esMoto?'disabled':''} style="width:50px; padding:5px; background:var(--negro3); border:1px solid var(--borde); border-radius:6px; color:#fff;"
             onchange="cambiarCantidad(${i}, this.value)">
           <span style="font-size:11px; color:var(--carbon);">Precio</span>
           <input type="number" min="0" step="0.01" value="${l.precio_unitario}" style="width:75px; padding:5px; background:var(--negro3); border:1px solid var(--borde); border-radius:6px; color:#fff;"
@@ -740,12 +921,21 @@ function renderLineasVenta(){
           <span style="min-width:70px; text-align:right;">${money(l.precio_unitario * l.cantidad)}</span>
           <span class="quitar" onclick="quitarLinea(${i})">✕</span>
         </div>
+        ${l.esMoto ? `
+          <div class="inline-2" style="margin-top:6px;">
+            <input type="text" placeholder="Serial / chasis (obligatorio)" value="${l.serial||''}" oninput="cambiarSerialLinea(${i}, this.value)" style="padding:6px; background:var(--negro3); border:1px solid var(--borde); border-radius:6px; color:#fff;">
+            <input type="text" placeholder="Placa (obligatorio)" value="${l.placa||''}" oninput="cambiarPlacaLinea(${i}, this.value)" style="padding:6px; background:var(--negro3); border:1px solid var(--borde); border-radius:6px; color:#fff;">
+          </div>
+        ` : ''}
       </div>
     `).join('');
   }
   const total = ESTADO.carritoVenta.reduce((s,l)=>s + l.precio_unitario*l.cantidad, 0);
   document.getElementById('total-venta').textContent = money(total);
 }
+
+function cambiarSerialLinea(i, val){ ESTADO.carritoVenta[i].serial = val; }
+function cambiarPlacaLinea(i, val){ ESTADO.carritoVenta[i].placa = val; }
 
 function cambiarCantidad(i, val){
   ESTADO.carritoVenta[i].cantidad = Math.max(1, parseFloat(val)||1);
@@ -785,17 +975,14 @@ function seleccionarCliente(id, nombre){
   document.getElementById('lista-clientes').style.display = 'none';
 }
 
-async function crearClienteRapido(nombre){
+function crearClienteRapido(nombre){
   if(!nombre.trim()) return;
-  const { data, error } = await sb.from('clientes').insert({ nombre_completo: nombre.trim() }).select().single();
-  if(error){ alert('Error creando cliente: ' + error.message); return; }
-  ESTADO.clientes.push(data);
-  seleccionarCliente(data.id, data.nombre_completo);
+  abrirModalClienteCompleto(nombre, 'seleccionarCliente');
 }
 
-async function registrarVenta(){
+async function registrarVenta(resolucion){
   const msg = document.getElementById('venta-msg');
-  msg.innerHTML = '';
+  if(!resolucion) msg.innerHTML = '';
   if(!ESTADO.carritoVenta.length){ msg.innerHTML = `<div class="msg err">Agrega al menos un producto.</div>`; return; }
 
   const modalidad = document.getElementById('modalidad-venta').value;
@@ -820,14 +1007,64 @@ async function registrarVenta(){
     }
   }
 
-  const montoParaCajaValidar = esCredito ? abonoInicial : total;
-  let pago = null;
-  if(montoParaCajaValidar > 0){
-    pago = datosMonedaCaja('vt', montoParaCajaValidar);
-    if(pago.error){ msg.innerHTML = `<div class="msg err">${pago.error}</div>`; return; }
+  // Validar serial y placa obligatorios en motos
+  for(const l of ESTADO.carritoVenta){
+    if(l.esMoto && (!l.serial || !l.serial.trim() || !l.placa || !l.placa.trim())){
+      msg.innerHTML = `<div class="msg err">Falta el serial y/o la placa de "${l.nombre}".</div>`;
+      return;
+    }
   }
 
-  const estadoVenta = !esCredito ? 'pagada_completa' : (abonoInicial >= total ? 'pagada_completa' : (abonoInicial > 0 ? 'pagada_parcial' : 'pendiente'));
+  const lineasPago = (ESTADO.pagosMixtosVenta||[]).filter(l => (l.monto||0) > 0);
+  for(const l of lineasPago){
+    if(l.moneda !== 'USD' && !(l.tasa > 0)){ msg.innerHTML = `<div class="msg err">Falta la tasa de cambio en una de las líneas de pago.</div>`; return; }
+  }
+  const totalPagadoUsd = calcularTotalPagosMixtosVenta();
+  const montoObjetivo = esCredito ? abonoInicial : total;
+
+  // Si hay diferencia entre lo pagado y lo que se debía pagar, resolver antes de continuar
+  if(!resolucion && montoObjetivo > 0 && Math.abs(totalPagadoUsd - montoObjetivo) > 0.01){
+    if(totalPagadoUsd < montoObjetivo){
+      const faltante = montoObjetivo - totalPagadoUsd;
+      msg.innerHTML = `
+        <div class="msg err">
+          Faltan ${money(faltante)} para completar el pago (${money(totalPagadoUsd)} de ${money(montoObjetivo)}).
+          <div class="acciones" style="margin-top:8px;">
+            <button class="btn chico" onclick="registrarVenta('pendiente')">Dejar el resto como saldo pendiente del cliente</button>
+            <button class="btn chico secundario" onclick="document.getElementById('venta-msg').innerHTML=''">Cancelar</button>
+          </div>
+        </div>`;
+      if(!clienteId){
+        msg.innerHTML += `<div class="msg err" style="margin-top:6px;">Para dejar saldo pendiente necesitas seleccionar o crear un cliente arriba.</div>`;
+      }
+      return;
+    } else {
+      const sobrante = totalPagadoUsd - montoObjetivo;
+      msg.innerHTML = `
+        <div class="msg err">
+          Sobran ${money(sobrante)} (pagaron ${money(totalPagadoUsd)} de ${money(montoObjetivo)}).
+          <div class="acciones" style="margin-top:8px;">
+            <button class="btn chico" onclick="registrarVenta('dejarlo')">Dejarlo así (ingreso extra)</button>
+            <button class="btn chico secundario" onclick="registrarVenta('vuelto')">Devolver vuelto al cliente</button>
+          </div>
+        </div>`;
+      return;
+    }
+  }
+
+  if(resolucion === 'pendiente' && !clienteId){ msg.innerHTML = `<div class="msg err">Selecciona o crea un cliente para dejar el saldo pendiente.</div>`; return; }
+
+  // Monto que realmente se va a registrar como pagado ahora
+  let montoParaCaja = totalPagadoUsd;
+  let sobranteVuelto = 0;
+  if(resolucion === 'vuelto'){
+    sobranteVuelto = totalPagadoUsd - montoObjetivo;
+    montoParaCaja = montoObjetivo;
+  }
+  const abonoInicialFinal = esCredito ? Math.min(montoParaCaja, total) : abonoInicial;
+  const estadoVenta = !esCredito
+    ? (montoParaCaja >= total ? 'pagada_completa' : 'pagada_parcial')
+    : (abonoInicialFinal >= total ? 'pagada_completa' : (abonoInicialFinal > 0 ? 'pagada_parcial' : 'pendiente'));
 
   const { data: venta, error: errVenta } = await sb.from('ventas').insert({
     sede_id: ESTADO.sedeSeleccionada,
@@ -835,7 +1072,7 @@ async function registrarVenta(){
     modalidad,
     estado: estadoVenta,
     total,
-    monto_pagado: esCredito ? abonoInicial : total,
+    monto_pagado: esCredito ? abonoInicialFinal : montoParaCaja,
     created_by: ESTADO.perfil.id
   }).select().single();
 
@@ -844,7 +1081,8 @@ async function registrarVenta(){
   // Items
   const items = ESTADO.carritoVenta.map(l => ({
     venta_id: venta.id, producto_id: l.producto_id, cantidad: l.cantidad,
-    precio_unitario: l.precio_unitario, subtotal: l.precio_unitario*l.cantidad
+    precio_unitario: l.precio_unitario, subtotal: l.precio_unitario*l.cantidad,
+    serial: l.esMoto ? l.serial.trim() : null, placa: l.esMoto ? l.placa.trim().toUpperCase() : null
   }));
   await sb.from('venta_items').insert(items);
 
@@ -859,30 +1097,50 @@ async function registrarVenta(){
     });
   }
 
-  // Caja
+  // Caja: una línea por cada forma de pago usada
   const { data: caja } = await sb.from('cajas').select('*').eq('sede_id', ESTADO.sedeSeleccionada).single();
-  const montoParaCaja = esCredito ? abonoInicial : total;
-  if(caja && montoParaCaja > 0){
-    await sb.from('movimientos_caja').insert({
-      caja_id: caja.id, sede_id: ESTADO.sedeSeleccionada,
-      tipo: esCredito ? 'ingreso_abono' : 'ingreso_venta', monto: montoParaCaja,
-      moneda: pago.moneda, metodo_pago: pago.metodo, monto_original: pago.montoOriginal, tasa_cambio: pago.tasa,
-      descripcion: esCredito ? 'Abono inicial de venta a crédito' : 'Venta de contado',
-      referencia_id: venta.id, created_by: ESTADO.perfil.id
-    });
-    await sb.from('cajas').update({ saldo_actual: Number(caja.saldo_actual) + montoParaCaja }).eq('id', caja.id);
+  if(caja && lineasPago.length){
+    // Si hubo que devolver vuelto, se recorta proporcionalmente el monto en USD que efectivamente queda en caja
+    const factorAjuste = (resolucion === 'vuelto' && totalPagadoUsd > 0) ? (montoObjetivo / totalPagadoUsd) : 1;
+    let deltaCaja = 0;
+    for(const l of lineasPago){
+      const usdLinea = l.moneda === 'USD' ? l.monto : (l.monto / l.tasa);
+      const usdAjustado = usdLinea * factorAjuste;
+      await sb.from('movimientos_caja').insert({
+        caja_id: caja.id, sede_id: ESTADO.sedeSeleccionada,
+        tipo: esCredito ? 'ingreso_abono' : 'ingreso_venta', monto: usdAjustado,
+        moneda: l.moneda, metodo_pago: l.metodo, monto_original: l.monto, tasa_cambio: l.moneda==='USD'?null:l.tasa,
+        descripcion: esCredito ? 'Abono inicial de venta a crédito' : 'Venta de contado',
+        referencia_id: venta.id, created_by: ESTADO.perfil.id
+      });
+      deltaCaja += usdAjustado;
+    }
+    if(resolucion === 'vuelto' && sobranteVuelto > 0){
+      // Registrar el vuelto entregado como egreso, con la moneda/forma de la última línea de pago
+      const ultimaLinea = lineasPago[lineasPago.length-1];
+      await sb.from('movimientos_caja').insert({
+        caja_id: caja.id, sede_id: ESTADO.sedeSeleccionada, tipo: 'egreso_otro', monto: sobranteVuelto,
+        moneda: ultimaLinea.moneda, metodo_pago: ultimaLinea.metodo,
+        monto_original: ultimaLinea.moneda==='USD' ? sobranteVuelto : sobranteVuelto*ultimaLinea.tasa,
+        tasa_cambio: ultimaLinea.moneda==='USD'?null:ultimaLinea.tasa,
+        descripcion: 'Vuelto entregado al cliente', referencia_id: venta.id, created_by: ESTADO.perfil.id
+      });
+      deltaCaja -= sobranteVuelto;
+    }
+    await sb.from('cajas').update({ saldo_actual: Number(caja.saldo_actual) + deltaCaja }).eq('id', caja.id);
   }
 
-  // Cuenta por cobrar si aplica
-  if(esCredito && estadoVenta !== 'pagada_completa'){
+  // Cuenta por cobrar si aplica (venta a crédito, o contado con saldo dejado pendiente)
+  const saldoPendienteFinal = total - abonoInicialFinal;
+  if(estadoVenta !== 'pagada_completa' && saldoPendienteFinal > 0.01){
     const { data: cxc } = await sb.from('cuentas_por_cobrar').insert({
       venta_id: venta.id, sede_id: ESTADO.sedeSeleccionada, cliente_id: clienteId,
-      monto_total: total, saldo_pendiente: total - abonoInicial, estado: estadoVenta
+      monto_total: total, saldo_pendiente: saldoPendienteFinal, estado: estadoVenta
     }).select().single();
 
-    if(abonoInicial > 0 && cxc){
+    if(abonoInicialFinal > 0 && cxc){
       await sb.from('abonos').insert({
-        cuenta_por_cobrar_id: cxc.id, monto: abonoInicial, nota: 'Abono inicial al momento de la venta',
+        cuenta_por_cobrar_id: cxc.id, monto: abonoInicialFinal, nota: 'Abono inicial al momento de la venta',
         created_by: ESTADO.perfil.id
       });
     }
@@ -956,6 +1214,44 @@ async function crearGrupoMotosan(){
   abrirGrupoMotosan(data.id);
 }
 
+function filtrarMsParticipantesPorTexto(texto){
+  const t = texto.trim().toLowerCase();
+  document.querySelectorAll('#tbody-ms-participantes tr[data-busq]').forEach(tr=>{
+    tr.style.display = tr.dataset.busq.includes(t) ? '' : 'none';
+  });
+}
+
+async function abrirHistorialMotosan(participanteId){
+  const { data: part } = await sb.from('motosan_participantes')
+    .select('*, clientes(nombre_completo, telefono, cedula), motosan_grupo_motos(monto_moto, cuota_semanal, productos(nombre))')
+    .eq('id', participanteId).single();
+  const { data: pagos } = await sb.from('motosan_pagos').select('*').eq('participante_id', participanteId).order('created_at', {ascending:false});
+  const { data: movsCaja } = await sb.from('movimientos_caja').select('*').eq('referencia_id', participanteId);
+  const totalPagado = (pagos||[]).reduce((s,p)=>s+Number(p.monto),0);
+  const montoMoto = Number(part.motosan_grupo_motos?.monto_moto||0);
+
+  document.getElementById('modal-contenido').innerHTML = `
+    <h3>Historial de ${part.clientes?.nombre_completo||'participante'} — ${part.motosan_grupo_motos?.productos?.nombre||''}</h3>
+    <div class="stock">${part.clientes?.cedula ? 'CI: '+part.clientes.cedula+' — ' : ''}${part.clientes?.telefono ? 'Tel: '+part.clientes.telefono : ''}</div>
+    <div class="kpis" style="margin-top:10px;">
+      <div class="kpi"><div class="label">Monto de la moto</div><div class="valor">${money(montoMoto)}</div></div>
+      <div class="kpi verde"><div class="label">Total pagado</div><div class="valor">${money(totalPagado)}</div></div>
+      <div class="kpi rojo"><div class="label">Saldo pendiente</div><div class="valor">${money(Math.max(0, montoMoto - totalPagado))}</div></div>
+    </div>
+    <table style="margin-top:10px;">
+      <thead><tr><th>Fecha</th><th>Monto</th><th>Moneda/Forma</th></tr></thead>
+      <tbody>
+        ${(pagos||[]).map(p=>{
+          const mov = (movsCaja||[]).find(m=>Math.abs(Number(m.monto)-Number(p.monto))<0.01 && m.created_at.slice(0,16)===p.created_at.slice(0,16));
+          return `<tr><td>${fecha(p.created_at)}</td><td>${money(p.monto)}</td><td>${mov ? `${mov.moneda} — ${mov.metodo_pago}` : '—'}</td></tr>`;
+        }).join('') || `<tr><td colspan="3" class="empty">Sin pagos todavía</td></tr>`}
+      </tbody>
+    </table>
+    <div class="acciones"><button class="btn secundario" onclick="cerrarModal()">Cerrar</button></div>
+  `;
+  document.getElementById('modal-bg').classList.add('activo');
+}
+
 async function abrirGrupoMotosan(grupoId){
   MOTOSAN_GRUPO_ACTIVO = grupoId;
   const detalle = document.getElementById('motosan-detalle');
@@ -964,7 +1260,7 @@ async function abrirGrupoMotosan(grupoId){
   const { data: grupo } = await sb.from('motosan_grupos').select('*').eq('id', grupoId).single();
   const { data: motosGrupo } = await sb.from('motosan_grupo_motos').select('*, productos(nombre, precio)').eq('grupo_id', grupoId).order('created_at');
   const { data: participantes } = await sb.from('motosan_participantes')
-    .select('*, clientes(nombre_completo, telefono), sedes(nombre), motosan_grupo_motos(monto_moto, cuota_semanal, productos(nombre))')
+    .select('*, clientes(nombre_completo, telefono, cedula), sedes(nombre), motosan_grupo_motos(monto_moto, cuota_semanal, productos(nombre))')
     .eq('grupo_id', grupoId).order('created_at');
 
   const participantesConDatos = [];
@@ -1023,12 +1319,13 @@ async function abrirGrupoMotosan(grupoId){
         </div>
       ` : `<div class="stock">Primero agrega al menos una moto disponible arriba.</div>`}
 
+      <div class="form-row"><input type="text" id="buscar-ms-participante" placeholder="Buscar por cliente o cédula..." oninput="filtrarMsParticipantesPorTexto(this.value)"></div>
       <table>
         <thead><tr><th>Cliente</th><th>Sede</th><th>Moto elegida</th><th>Monto</th><th>Cuota/sem</th><th>Pagos</th><th>Total pagado</th><th>Al día</th><th>Estado</th><th></th></tr></thead>
-        <tbody>
+        <tbody id="tbody-ms-participantes">
           ${participantesConDatos.map(p=>`
-            <tr>
-              <td>${p.clientes?.nombre_completo}</td>
+            <tr data-busq="${((p.clientes?.nombre_completo||'')+' '+(p.clientes?.cedula||'')).toLowerCase()}">
+              <td style="cursor:pointer; text-decoration:underline;" onclick="abrirHistorialMotosan('${p.id}')">${p.clientes?.nombre_completo}</td>
               <td>${p.sedes?.nombre || '—'}</td>
               <td>${p.motosan_grupo_motos?.productos?.nombre || '—'}</td>
               <td>${money(p.motosan_grupo_motos?.monto_moto)}</td>
@@ -1085,12 +1382,9 @@ function buscarClienteInputMotosan(txt){
   lista.style.display = 'block';
 }
 
-async function crearClienteYAbrirModalMotosan(nombre){
+function crearClienteYAbrirModalMotosan(nombre){
   if(!nombre.trim()) return;
-  const { data, error } = await sb.from('clientes').insert({ nombre_completo: nombre.trim() }).select().single();
-  if(error){ alert('Error creando cliente: ' + error.message); return; }
-  ESTADO.clientes.push(data);
-  abrirModalNuevoParticipante(data.id, data.nombre_completo);
+  abrirModalClienteCompleto(nombre, 'abrirModalNuevoParticipante');
 }
 
 async function abrirModalNuevoParticipante(clienteId, nombreCliente){
@@ -1247,7 +1541,7 @@ async function renderPlanAhorro(){
   await cargarProductosYClientes();
 
   const { data: planes } = await sb.from('planes_ahorro')
-    .select('*, clientes(nombre_completo, telefono), productos(nombre)')
+    .select('*, clientes(nombre_completo, telefono, cedula), productos(nombre)')
     .eq('sede_id', ESTADO.sedeSeleccionada)
     .order('created_at', {ascending:false});
 
@@ -1274,12 +1568,13 @@ async function renderPlanAhorro(){
 
       <div class="card">
         <h3>Planes activos — ${sedeNombre(ESTADO.sedeSeleccionada)}</h3>
+        <div class="form-row"><input type="text" id="buscar-pa" placeholder="Buscar por cliente o cédula..." oninput="filtrarPaPorTexto(this.value)"></div>
         <table>
           <thead><tr><th>Cliente</th><th>Moto</th><th>Total</th><th>Saldo</th><th>Estado</th><th></th></tr></thead>
-          <tbody>
+          <tbody id="tbody-pa">
             ${(planes||[]).map(p=>`
-              <tr>
-                <td>${p.clientes?.nombre_completo}</td>
+              <tr data-busq="${((p.clientes?.nombre_completo||'')+' '+(p.clientes?.cedula||'')).toLowerCase()}">
+                <td style="cursor:pointer; text-decoration:underline;" onclick="abrirHistorialPA('${p.id}')">${p.clientes?.nombre_completo}</td>
                 <td>${p.productos?.nombre}</td>
                 <td>${money(p.monto_moto)}</td>
                 <td style="color:var(--rojo); font-weight:600;">${money(p.saldo_pendiente)}</td>
@@ -1292,6 +1587,37 @@ async function renderPlanAhorro(){
       </div>
     </div>
   `;
+}
+
+function filtrarPaPorTexto(texto){
+  const t = texto.trim().toLowerCase();
+  document.querySelectorAll('#tbody-pa tr[data-busq]').forEach(tr=>{
+    tr.style.display = tr.dataset.busq.includes(t) ? '' : 'none';
+  });
+}
+
+async function abrirHistorialPA(planId){
+  const { data: plan } = await sb.from('planes_ahorro').select('*, clientes(nombre_completo, telefono, cedula), productos(nombre)').eq('id', planId).single();
+  const { data: pagos } = await sb.from('movimientos_caja').select('*').eq('referencia_id', planId).order('created_at', {ascending:false});
+  const totalAbonado = (pagos||[]).reduce((s,m)=>s+Number(m.monto),0);
+
+  document.getElementById('modal-contenido').innerHTML = `
+    <h3>Historial de ${plan.clientes?.nombre_completo||'cliente'} — ${plan.productos?.nombre||''}</h3>
+    <div class="stock">${plan.clientes?.cedula ? 'CI: '+plan.clientes.cedula+' — ' : ''}${plan.clientes?.telefono ? 'Tel: '+plan.clientes.telefono : ''}</div>
+    <div class="kpis" style="margin-top:10px;">
+      <div class="kpi"><div class="label">Monto de la moto</div><div class="valor">${money(plan.monto_moto)}</div></div>
+      <div class="kpi verde"><div class="label">Total abonado</div><div class="valor">${money(totalAbonado)}</div></div>
+      <div class="kpi rojo"><div class="label">Saldo pendiente</div><div class="valor">${money(plan.saldo_pendiente)}</div></div>
+    </div>
+    <table style="margin-top:10px;">
+      <thead><tr><th>Fecha</th><th>Monto</th><th>Moneda/Forma</th></tr></thead>
+      <tbody>
+        ${(pagos||[]).map(m=>`<tr><td>${fecha(m.created_at)}</td><td>${money(m.monto)}</td><td>${m.moneda}${m.moneda!=='USD'?` (${fmtMoneda(m.moneda, m.monto_original)})`:''} — ${m.metodo_pago}</td></tr>`).join('') || `<tr><td colspan="3" class="empty">Sin pagos todavía</td></tr>`}
+      </tbody>
+    </table>
+    <div class="acciones"><button class="btn secundario" onclick="cerrarModal()">Cerrar</button></div>
+  `;
+  document.getElementById('modal-bg').classList.add('activo');
 }
 
 function autocompletarMontoPA(){
@@ -1315,12 +1641,9 @@ function seleccionarClientePA(id, nombre){
   document.getElementById('pa-buscar-cliente').value = nombre;
   document.getElementById('pa-lista-clientes').style.display = 'none';
 }
-async function crearClienteRapidoPA(nombre){
+function crearClienteRapidoPA(nombre){
   if(!nombre.trim()) return;
-  const { data, error } = await sb.from('clientes').insert({ nombre_completo: nombre.trim() }).select().single();
-  if(error){ alert('Error creando cliente: ' + error.message); return; }
-  ESTADO.clientes.push(data);
-  seleccionarClientePA(data.id, data.nombre_completo);
+  abrirModalClienteCompleto(nombre, 'seleccionarClientePA');
 }
 
 async function crearPlanAhorro(){
@@ -2472,7 +2795,7 @@ async function renderCobrar(){
   await cargarProductosYClientes();
 
   const { data: cxc } = await sb.from('cuentas_por_cobrar')
-    .select('*, clientes(nombre_completo, telefono), ventas(modalidad)')
+    .select('*, clientes(nombre_completo, telefono, cedula), ventas(modalidad)')
     .eq('sede_id', ESTADO.sedeSeleccionada)
     .neq('estado', 'pagada_completa')
     .order('created_at', {ascending:false});
@@ -2497,12 +2820,13 @@ async function renderCobrar(){
 
     <div class="card">
       <h3>Cuentas por cobrar pendientes — ${sedeNombre(ESTADO.sedeSeleccionada)}</h3>
+      <div class="form-row"><input type="text" id="buscar-cxc" placeholder="Buscar por cliente o cédula..." oninput="filtrarCxcPorTexto(this.value)"></div>
       <table>
         <thead><tr><th>Cliente</th><th>Descripción</th><th>Teléfono</th><th>Modalidad</th><th>Total</th><th>Saldo pendiente</th><th>Estado</th><th></th></tr></thead>
-        <tbody>
+        <tbody id="tbody-cxc">
           ${(cxc||[]).map(c=>`
-            <tr>
-              <td>${c.clientes?.nombre_completo||'—'}</td>
+            <tr data-busq="${((c.clientes?.nombre_completo||'')+' '+(c.clientes?.cedula||'')).toLowerCase()}">
+              <td style="cursor:pointer; text-decoration:underline;" onclick="abrirHistorialCxc('${c.id}')">${c.clientes?.nombre_completo||'—'}</td>
               <td>${c.descripcion || (c.ventas ? 'Venta desde el panel' : '—')}</td>
               <td>${c.clientes?.telefono||'—'}</td>
               <td>${c.ventas ? `<span class="badge ${c.ventas.modalidad}">${MODALIDADES[c.ventas.modalidad]||'—'}</span>` : '—'}</td>
@@ -2516,6 +2840,38 @@ async function renderCobrar(){
       </table>
     </div>
   `;
+}
+
+function filtrarCxcPorTexto(texto){
+  const t = texto.trim().toLowerCase();
+  document.querySelectorAll('#tbody-cxc tr[data-busq]').forEach(tr=>{
+    tr.style.display = tr.dataset.busq.includes(t) ? '' : 'none';
+  });
+}
+
+async function abrirHistorialCxc(cxcId){
+  const { data: cxc } = await sb.from('cuentas_por_cobrar').select('*, clientes(nombre_completo, telefono, cedula)').eq('id', cxcId).single();
+  const { data: abonos } = await sb.from('abonos').select('*').eq('cuenta_por_cobrar_id', cxcId).order('created_at', {ascending:false});
+  const totalAbonado = (abonos||[]).reduce((s,a)=>s+Number(a.monto),0);
+
+  document.getElementById('modal-contenido').innerHTML = `
+    <h3>Historial de ${cxc.clientes?.nombre_completo||'cliente'}</h3>
+    <div class="stock">${cxc.clientes?.cedula ? 'CI: '+cxc.clientes.cedula+' — ' : ''}${cxc.clientes?.telefono ? 'Tel: '+cxc.clientes.telefono : ''}</div>
+    <div class="stock" style="margin-top:6px;">${cxc.descripcion || 'Venta desde el panel'}</div>
+    <div class="kpis" style="margin-top:10px;">
+      <div class="kpi"><div class="label">Monto total</div><div class="valor">${money(cxc.monto_total)}</div></div>
+      <div class="kpi verde"><div class="label">Total abonado</div><div class="valor">${money(totalAbonado)}</div></div>
+      <div class="kpi rojo"><div class="label">Saldo pendiente</div><div class="valor">${money(cxc.saldo_pendiente)}</div></div>
+    </div>
+    <table style="margin-top:10px;">
+      <thead><tr><th>Fecha</th><th>Monto</th><th>Nota</th></tr></thead>
+      <tbody>
+        ${(abonos||[]).map(a=>`<tr><td>${fecha(a.created_at)}</td><td>${money(a.monto)}</td><td>${a.nota||'—'}</td></tr>`).join('') || `<tr><td colspan="3" class="empty">Sin abonos todavía</td></tr>`}
+      </tbody>
+    </table>
+    <div class="acciones"><button class="btn secundario" onclick="cerrarModal()">Cerrar</button></div>
+  `;
+  document.getElementById('modal-bg').classList.add('activo');
 }
 
 function buscarClienteInputCxc(txt){
@@ -2534,12 +2890,9 @@ function seleccionarClienteCxc(id, nombre){
   document.getElementById('cxc-buscar-cliente').value = nombre;
   document.getElementById('cxc-lista-clientes').style.display = 'none';
 }
-async function crearClienteRapidoCxc(nombre){
+function crearClienteRapidoCxc(nombre){
   if(!nombre.trim()) return;
-  const { data, error } = await sb.from('clientes').insert({ nombre_completo: nombre.trim() }).select().single();
-  if(error){ alert('Error creando cliente: ' + error.message); return; }
-  ESTADO.clientes.push(data);
-  seleccionarClienteCxc(data.id, data.nombre_completo);
+  abrirModalClienteCompleto(nombre, 'seleccionarClienteCxc');
 }
 
 async function crearCuentaPorCobrarManual(){
@@ -2583,6 +2936,46 @@ function abrirModalAbono(cxcId, saldo){
 }
 
 function cerrarModal(){ document.getElementById('modal-bg').classList.remove('activo'); }
+
+// Modal reutilizable: se usa en Ventas, Motosán, Plan Ahorro y Cuentas por Cobrar
+// para pedir TODOS los datos del cliente de una vez al crear uno nuevo.
+function abrirModalClienteCompleto(nombreInicial, callbackFn){
+  document.getElementById('modal-contenido').innerHTML = `
+    <h3>Datos del cliente nuevo</h3>
+    <div id="ncc-msg"></div>
+    <div class="form-row"><label>Nombre completo</label><input type="text" id="ncc-nombre" value="${(nombreInicial||'').replace(/"/g,'&quot;')}"></div>
+    <div class="inline-2">
+      <div class="form-row"><label>Cédula</label><input type="text" id="ncc-cedula"></div>
+      <div class="form-row"><label>Teléfono</label><input type="text" id="ncc-telefono"></div>
+    </div>
+    <div class="form-row"><label>Correo (opcional)</label><input type="email" id="ncc-email"></div>
+    <div class="form-row"><label>Dirección (opcional)</label><input type="text" id="ncc-direccion"></div>
+    <div class="acciones">
+      <button class="btn secundario" onclick="cerrarModal()">Cancelar</button>
+      <button class="btn" onclick="confirmarClienteCompleto('${callbackFn}')">Guardar y continuar</button>
+    </div>
+  `;
+  document.getElementById('modal-bg').classList.add('activo');
+}
+
+async function confirmarClienteCompleto(callbackFn){
+  const msg = document.getElementById('ncc-msg');
+  const nombre_completo = document.getElementById('ncc-nombre').value.trim();
+  const cedula = document.getElementById('ncc-cedula').value.trim() || null;
+  const telefono = document.getElementById('ncc-telefono').value.trim() || null;
+  const email = document.getElementById('ncc-email').value.trim() || null;
+  const direccion = document.getElementById('ncc-direccion').value.trim() || null;
+
+  if(!nombre_completo){ msg.innerHTML = `<div class="msg err">El nombre es obligatorio.</div>`; return; }
+
+  const { data, error } = await sb.from('clientes').insert({ nombre_completo, cedula, telefono, email, direccion }).select().single();
+  if(error){ msg.innerHTML = `<div class="msg err">Error: ${error.message}</div>`; return; }
+
+  ESTADO.clientes.push(data);
+  cerrarModal();
+  window[callbackFn](data.id, data.nombre_completo);
+}
+
 
 async function confirmarAbono(cxcId, saldoActual){
   const msg = document.getElementById('abono-modal-msg');
@@ -2898,6 +3291,10 @@ async function renderTraslados(){
             </select>
           </div>
         </div>
+        <div class="inline-2" id="serial-placa-traslado-wrap" style="display:none;">
+          <div class="form-row"><label>Serial / chasis (obligatorio)</label><input type="text" id="serial-traslado"></div>
+          <div class="form-row"><label>Placa (obligatorio)</label><input type="text" id="placa-traslado"></div>
+        </div>
         <div class="form-row"><label>Nota (opcional)</label><input type="text" id="nota-traslado" placeholder="Ej: para exhibir en vitrina"></div>
         <button class="btn" ${otrasSedes.length?'':'disabled'} onclick="enviarTraslado()">Enviar traslado</button>
       </div>
@@ -2996,6 +3393,15 @@ function seleccionarProductoTraslado(productoId){
   document.getElementById('lista-productos-traslado').style.display = 'none';
   document.getElementById('producto-traslado-seleccionado').textContent = `Stock disponible en esta sede: ${ESTADO.inventarioSede[productoId] ?? 0}`;
   document.getElementById('cantidad-traslado').max = ESTADO.inventarioSede[productoId] ?? 0;
+
+  const esMoto = esProductoMoto(productoId);
+  document.getElementById('serial-placa-traslado-wrap').style.display = esMoto ? 'grid' : 'none';
+  if(esMoto){
+    document.getElementById('cantidad-traslado').value = 1;
+    document.getElementById('cantidad-traslado').disabled = true;
+  } else {
+    document.getElementById('cantidad-traslado').disabled = false;
+  }
 }
 
 async function enviarTraslado(){
@@ -3004,17 +3410,21 @@ async function enviarTraslado(){
   const cantidad = parseInt(document.getElementById('cantidad-traslado').value);
   const sedeDestino = document.getElementById('sede-destino-traslado').value;
   const nota = document.getElementById('nota-traslado').value.trim();
+  const esMoto = esProductoMoto(productoId);
+  const serial = document.getElementById('serial-traslado').value.trim();
+  const placa = document.getElementById('placa-traslado').value.trim().toUpperCase();
 
   if(!productoId){ msg.innerHTML = `<div class="msg err">Selecciona un producto.</div>`; return; }
   if(!cantidad || cantidad <= 0){ msg.innerHTML = `<div class="msg err">Ingresa una cantidad válida.</div>`; return; }
   if(!sedeDestino){ msg.innerHTML = `<div class="msg err">Selecciona la sede destino.</div>`; return; }
+  if(esMoto && (!serial || !placa)){ msg.innerHTML = `<div class="msg err">Falta el serial y/o la placa de la moto.</div>`; return; }
 
   const stockActual = ESTADO.inventarioSede[productoId] ?? 0;
   if(cantidad > stockActual){ msg.innerHTML = `<div class="msg err">No hay suficiente stock en esta sede (disponible: ${stockActual}).</div>`; return; }
 
   const { data: traslado, error } = await sb.from('traslados_inventario').insert({
     producto_id: productoId, cantidad, sede_origen_id: ESTADO.sedeSeleccionada, sede_destino_id: sedeDestino,
-    nota: nota || null, created_by: ESTADO.perfil.id
+    nota: nota || null, serial: esMoto ? serial : null, placa: esMoto ? placa : null, created_by: ESTADO.perfil.id
   }).select().single();
   if(error){ msg.innerHTML = `<div class="msg err">Error: ${error.message}</div>`; return; }
 
@@ -3023,7 +3433,7 @@ async function enviarTraslado(){
     .eq('sede_id', ESTADO.sedeSeleccionada).eq('producto_id', productoId);
   await sb.from('movimientos_inventario').insert({
     sede_id: ESTADO.sedeSeleccionada, producto_id: productoId, tipo: 'traslado', cantidad,
-    nota: `Salida por traslado a ${sedeNombre(sedeDestino)}${nota ? ' — ' + nota : ''} (pendiente de confirmación)`,
+    nota: `Salida por traslado a ${sedeNombre(sedeDestino)}${esMoto ? ` — serial ${serial}, placa ${placa}` : ''}${nota ? ' — ' + nota : ''} (pendiente de confirmación)`,
     referencia_id: traslado.id, created_by: ESTADO.perfil.id
   });
 
@@ -3675,6 +4085,7 @@ function abrirEditarCliente(c){
       <div class="form-row"><label>Cédula</label><input type="text" id="ecl-cedula" value="${(c.cedula||'').replace(/"/g,'&quot;')}"></div>
       <div class="form-row"><label>Teléfono</label><input type="text" id="ecl-telefono" value="${(c.telefono||'').replace(/"/g,'&quot;')}"></div>
     </div>
+    <div class="form-row"><label>Correo</label><input type="email" id="ecl-email" value="${(c.email||'').replace(/"/g,'&quot;')}"></div>
     <div class="form-row"><label>Dirección</label><input type="text" id="ecl-direccion" value="${(c.direccion||'').replace(/"/g,'&quot;')}"></div>
     <div class="acciones">
       <button class="btn secundario" onclick="cerrarModal()">Cancelar</button>
@@ -3689,11 +4100,12 @@ async function guardarEdicionCliente(clienteId){
   const nombre_completo = document.getElementById('ecl-nombre').value.trim();
   const cedula = document.getElementById('ecl-cedula').value.trim() || null;
   const telefono = document.getElementById('ecl-telefono').value.trim() || null;
+  const email = document.getElementById('ecl-email').value.trim() || null;
   const direccion = document.getElementById('ecl-direccion').value.trim() || null;
 
   if(!nombre_completo){ msg.innerHTML = `<div class="msg err">El nombre es obligatorio.</div>`; return; }
 
-  const { error } = await sb.from('clientes').update({ nombre_completo, cedula, telefono, direccion }).eq('id', clienteId);
+  const { error } = await sb.from('clientes').update({ nombre_completo, cedula, telefono, email, direccion }).eq('id', clienteId);
   if(error){ msg.innerHTML = `<div class="msg err">Error: ${error.message}</div>`; return; }
   cerrarModal();
   await cargarProductosYClientes();
