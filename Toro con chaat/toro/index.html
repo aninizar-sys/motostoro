@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MotosToro — La Fría y Coloncito, Táchira</title>
+<meta name="description" content="Motos, repuestos, cascos y accesorios de la marca Toro. Contáctanos por WhatsApp — visítanos en La Fría y Coloncito, Táchira.">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --negro: #0a0a0a;
+    --negro2: #131313;
+    --negro3: #1c1c1c;
+    --rojo: #e3242b;
+    --rojo-dim: #7a1418;
+    --carbon: #8a8a8a;
+    --carbon-claro: #c4c4c4;
+    --blanco: #f5f5f5;
+    --borde: #262626;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html{scroll-behavior:smooth;}
+  body{
+    background:var(--negro); color:var(--blanco);
+    font-family:'Inter', -apple-system, sans-serif;
+    min-height:100vh;
+  }
+  h1,h2,h3,.display{ font-family:'Oswald', sans-serif; text-transform:uppercase; letter-spacing:.5px; }
+  a{color:inherit; text-decoration:none;}
+  img{display:block; max-width:100%;}
+  ::-webkit-scrollbar{width:10px;}
+  ::-webkit-scrollbar-thumb{background:var(--borde); border-radius:5px;}
+
+  .wrap{max-width:1180px; margin:0 auto; padding:0 24px;}
+
+  /* ---------- HEADER ---------- */
+  header{
+    position:sticky; top:0; z-index:40; background:rgba(10,10,10,.92); backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--borde);
+  }
+  .header-inner{display:flex; align-items:center; justify-content:space-between; padding:16px 24px; max-width:1180px; margin:0 auto;}
+  .logo{font-family:'Oswald',sans-serif; font-weight:700; font-size:22px; letter-spacing:1px;}
+  .logo span{color:var(--rojo);}
+  .header-cta{
+    background:var(--rojo); color:#fff; padding:10px 20px; border-radius:6px; font-weight:600; font-size:14px;
+    display:flex; align-items:center; gap:8px; transition:background .15s;
+  }
+  .header-cta:hover{background:#c91e24;}
+
+  /* ---------- HERO ---------- */
+  .hero{
+    position:relative; overflow:hidden;
+    padding:90px 24px 70px;
+    background:
+      radial-gradient(ellipse 900px 500px at 85% -10%, rgba(227,36,43,.18), transparent 60%),
+      linear-gradient(180deg, #0a0a0a 0%, #0d0d0d 100%);
+    border-bottom:1px solid var(--borde);
+  }
+  .hero-stripe{
+    position:absolute; top:0; right:-120px; width:480px; height:200%;
+    background:linear-gradient(115deg, transparent 42%, var(--rojo-dim) 42%, var(--rojo-dim) 46%, var(--rojo) 46%, var(--rojo) 50%, transparent 50%);
+    opacity:.35; pointer-events:none;
+  }
+  .hero-inner{max-width:1180px; margin:0 auto; position:relative;}
+  .hero h1{font-size:clamp(38px,6vw,64px); line-height:1.03; max-width:680px;}
+  .hero h1 .accent{color:var(--rojo);}
+  .hero p{color:var(--carbon-claro); font-size:17px; max-width:520px; margin-top:18px; line-height:1.6;}
+  .hero-actions{display:flex; gap:14px; margin-top:32px; flex-wrap:wrap;}
+  .btn{
+    display:inline-flex; align-items:center; gap:9px; padding:14px 26px; border-radius:7px;
+    font-weight:600; font-size:14.5px; letter-spacing:.2px; cursor:pointer; border:none; transition:all .15s;
+  }
+  .btn-primario{background:var(--rojo); color:#fff;}
+  .btn-primario:hover{background:#c91e24; transform:translateY(-1px);}
+  .btn-secundario{background:transparent; color:var(--blanco); border:1px solid var(--borde);}
+  .btn-secundario:hover{border-color:var(--carbon);}
+  .hero-sedes{display:flex; gap:28px; margin-top:46px; flex-wrap:wrap;}
+  .hero-sede{font-size:13px; color:var(--carbon);}
+  .hero-sede b{display:block; color:var(--blanco); font-family:'Oswald',sans-serif; font-size:15px; letter-spacing:.3px; margin-bottom:2px;}
+
+  /* ---------- CATEGORY FILTER ---------- */
+  .filtros{
+    position:sticky; top:65px; z-index:30; background:var(--negro); border-bottom:1px solid var(--borde);
+    padding:16px 24px; overflow-x:auto; white-space:nowrap;
+  }
+  .filtros-inner{max-width:1180px; margin:0 auto; display:flex; gap:10px;}
+  .chip{
+    background:var(--negro3); border:1px solid var(--borde); color:var(--carbon-claro);
+    padding:9px 18px; border-radius:20px; font-size:13.5px; font-weight:500; cursor:pointer; flex-shrink:0;
+    transition:all .15s;
+  }
+  .chip.activo{background:var(--rojo); border-color:var(--rojo); color:#fff;}
+  .chip:hover:not(.activo){border-color:var(--carbon);}
+
+  /* ---------- CATALOGO ---------- */
+  .catalogo{padding:56px 24px 90px;}
+  .catalogo h2{font-size:26px; margin-bottom:6px;}
+  .catalogo .sub{color:var(--carbon); font-size:14px; margin-bottom:32px;}
+  .grid-productos{
+    display:grid; grid-template-columns:repeat(auto-fill, minmax(260px,1fr)); gap:22px;
+  }
+  .card{
+    background:var(--negro2); border:1px solid var(--borde); border-radius:14px; overflow:hidden;
+    display:flex; flex-direction:column; transition:border-color .15s, transform .15s;
+  }
+  .card:hover{border-color:#3a3a3a; transform:translateY(-3px);}
+  .card-img{width:100%; aspect-ratio:4/3.1; background:#000; overflow:hidden; position:relative;}
+  .card-img img{width:100%; height:100%; object-fit:cover;}
+  .card-cat{
+    position:absolute; top:10px; left:10px; background:rgba(10,10,10,.75); backdrop-filter:blur(4px);
+    color:var(--carbon-claro); font-size:11px; padding:4px 10px; border-radius:20px; text-transform:uppercase; letter-spacing:.4px;
+  }
+  .card-body{padding:16px 18px 18px; display:flex; flex-direction:column; flex:1;}
+  .card-body h3{font-size:16px; font-weight:600; letter-spacing:0; text-transform:none; font-family:'Inter',sans-serif; margin-bottom:6px;}
+  .card-body p{font-size:12.5px; color:var(--carbon); line-height:1.5; flex:1; margin-bottom:14px;
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;}
+  .card-precio{font-family:'Oswald',sans-serif; font-size:19px; color:var(--rojo); margin-bottom:12px;}
+  .card-precio.consultar{font-size:13px; color:var(--carbon);}
+
+  .galeria-mini{display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;}
+  .galeria-mini .mini{
+    width:38px; height:32px; object-fit:cover; border-radius:5px; cursor:pointer;
+    opacity:.55; border:1.5px solid transparent; transition:opacity .12s, border-color .12s;
+  }
+  .galeria-mini .mini:hover{opacity:.85;}
+  .galeria-mini .mini.activa{opacity:1; border-color:var(--rojo);}
+
+  .color-swatches{display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap;}
+  .swatch{
+    width:26px; height:26px; border-radius:50%; border:2px solid var(--negro3); cursor:pointer;
+    padding:0; transition:transform .12s, border-color .12s; box-shadow:0 0 0 1px var(--borde);
+  }
+  .swatch:hover{transform:scale(1.12);}
+  .swatch.activo{border-color:var(--rojo); box-shadow:0 0 0 1px var(--rojo);}
+  .swatch.agotado{opacity:.28; cursor:pointer; position:relative;}
+  .swatch.agotado::after{
+    content:''; position:absolute; top:50%; left:-3px; right:-3px; height:1.5px; background:var(--blanco);
+    transform:rotate(-45deg); opacity:.8;
+  }
+  .card-btn{
+    display:flex; align-items:center; justify-content:center; gap:7px; padding:10px; border-radius:7px;
+    background:var(--negro3); border:1px solid var(--borde); color:var(--blanco); font-size:13px; font-weight:600;
+    transition:all .15s;
+  }
+  .card-btn:hover{background:var(--rojo); border-color:var(--rojo);}
+
+  .empty-state{color:var(--carbon); text-align:center; padding:70px 20px; font-size:14px;}
+
+  #scroll-controles{
+    display:none; flex-direction:column; gap:10px; position:fixed; bottom:22px; left:22px; z-index:50;
+  }
+  #scroll-controles button{
+    width:44px; height:44px; border-radius:50%; border:1px solid var(--borde);
+    background:var(--negro2); color:var(--blanco); font-size:18px; font-weight:700;
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+    box-shadow:0 4px 14px rgba(0,0,0,.4); transition:all .15s;
+  }
+  #scroll-controles button:hover{background:var(--rojo); border-color:var(--rojo);}
+  @media(max-width:640px){
+    #scroll-controles{left:14px; bottom:14px;}
+    #scroll-controles button{width:40px; height:40px; font-size:16px;}
+  }
+
+  .motosan-grupo{background:var(--negro2); border:1px solid var(--borde); border-radius:14px; padding:22px; margin-bottom:18px;}
+  .motosan-grupo h3{font-size:17px; margin-bottom:2px;}
+  .motosan-grupo .sede-tag{color:var(--carbon); font-size:12.5px; margin-bottom:16px;}
+  .motosan-motos{display:grid; grid-template-columns:repeat(auto-fill, minmax(220px,1fr)); gap:14px;}
+  .motosan-moto-card{
+    background:var(--negro3); border:1px solid var(--borde); border-radius:10px; padding:16px;
+    display:flex; flex-direction:column; gap:8px;
+  }
+  .motosan-moto-card .nombre{font-weight:600; font-size:14.5px;}
+  .motosan-moto-card .cuota{font-family:'Oswald',sans-serif; color:var(--rojo); font-size:20px;}
+  .motosan-moto-card .cuota span{font-size:12px; color:var(--carbon); font-family:'Inter',sans-serif;}
+  .motosan-moto-card .total{font-size:12px; color:var(--carbon);}
+
+  .detalle-bg{
+    display:none; position:fixed; inset:0; background:rgba(0,0,0,.75); z-index:60;
+    align-items:center; justify-content:center; padding:20px; overflow-y:auto;
+  }
+  .detalle-bg.activo{display:flex;}
+  .detalle-modal{
+    background:var(--negro2); border:1px solid var(--borde); border-radius:16px;
+    max-width:880px; width:100%; max-height:92vh; overflow-y:auto; position:relative; padding:0;
+  }
+  .detalle-cerrar{
+    position:absolute; top:14px; right:14px; z-index:2; background:rgba(10,10,10,.7); color:#fff;
+    border:none; width:34px; height:34px; border-radius:50%; font-size:16px; cursor:pointer;
+  }
+  .detalle-grid{display:grid; grid-template-columns:1fr 1fr;}
+  .detalle-img{aspect-ratio:1/1; background:#000; overflow:hidden;}
+  .detalle-img img{width:100%; height:100%; object-fit:cover;}
+  .detalle-info{padding:30px;}
+  .detalle-info h2{font-size:24px; margin-bottom:10px; text-transform:none; font-family:'Inter',sans-serif; font-weight:700;}
+  .detalle-info .cat{color:var(--rojo); font-size:12.5px; text-transform:uppercase; letter-spacing:.5px; margin-bottom:14px;}
+  .detalle-info p{color:var(--carbon-claro); line-height:1.7; font-size:14.5px; margin-bottom:20px;}
+  .detalle-precio{font-family:'Oswald',sans-serif; font-size:26px; color:var(--rojo); margin-bottom:20px;}
+  @media (max-width:700px){
+    .detalle-grid{grid-template-columns:1fr;}
+    .detalle-img{aspect-ratio:4/3;}
+  }
+
+  /* ---------- QUIENES SOMOS ---------- */
+  .franja{
+    padding:64px 24px; border-top:1px solid var(--borde); border-bottom:1px solid var(--borde);
+    background:var(--negro2);
+  }
+  .franja-inner{max-width:1180px; margin:0 auto; display:grid; grid-template-columns:1fr 1fr; gap:50px; align-items:center;}
+  .franja h2{font-size:26px; margin-bottom:16px;}
+  .franja p{color:var(--carbon-claro); line-height:1.7; font-size:15px;}
+  .franja-stats{display:grid; grid-template-columns:1fr 1fr; gap:18px;}
+  .stat{background:var(--negro); border:1px solid var(--borde); border-radius:12px; padding:22px;}
+  .stat b{display:block; font-family:'Oswald',sans-serif; font-size:28px; color:var(--rojo);}
+  .stat span{font-size:12.5px; color:var(--carbon); text-transform:uppercase; letter-spacing:.4px;}
+
+  /* ---------- FOOTER ---------- */
+  footer{padding:56px 24px 34px;}
+  .footer-inner{max-width:1180px; margin:0 auto;}
+  .footer-top{display:grid; grid-template-columns:1.3fr 1fr 1fr; gap:40px; padding-bottom:40px; border-bottom:1px solid var(--borde);}
+  .footer-logo{font-family:'Oswald',sans-serif; font-weight:700; font-size:20px; margin-bottom:12px;}
+  .footer-logo span{color:var(--rojo);}
+  .footer-top p{color:var(--carbon); font-size:13.5px; line-height:1.6; max-width:280px;}
+  .footer-col h4{font-size:12.5px; text-transform:uppercase; letter-spacing:.6px; color:var(--carbon); margin-bottom:14px;}
+  .footer-col div{font-size:14px; color:var(--carbon-claro); margin-bottom:8px;}
+  .footer-bottom{padding-top:22px; display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px; color:var(--carbon); font-size:12.5px;}
+
+  .wa-flotante{
+    position:fixed; bottom:22px; right:22px; z-index:50;
+    background:var(--rojo); color:#fff; width:56px; height:56px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center; box-shadow:0 6px 20px rgba(227,36,43,.4);
+    transition:transform .15s; border:none; cursor:pointer;
+  }
+  .wa-flotante:hover{transform:scale(1.07);}
+
+  .chat-panel{
+    display:none; position:fixed; bottom:90px; right:22px; z-index:55;
+    width:340px; max-width:90vw; height:460px; max-height:75vh;
+    background:var(--negro2); border:1px solid var(--borde); border-radius:16px;
+    box-shadow:0 12px 40px rgba(0,0,0,.5); flex-direction:column; overflow:hidden;
+  }
+  .chat-panel.activo{display:flex;}
+  .chat-header{
+    background:var(--negro3); padding:14px 16px; display:flex; justify-content:space-between; align-items:center;
+    border-bottom:1px solid var(--borde);
+  }
+  .chat-header-title{font-weight:700; font-size:14px;}
+  .chat-header-sub{font-size:11.5px; color:var(--carbon); display:flex; align-items:center; gap:5px;}
+  .chat-header-sub::before{content:''; width:7px; height:7px; border-radius:50%; background:#3aa65b; display:inline-block;}
+  .chat-header button{background:none; border:none; color:var(--carbon-claro); font-size:15px; cursor:pointer; padding:4px;}
+  .chat-mensajes{flex:1; overflow-y:auto; padding:14px; display:flex; flex-direction:column; gap:10px;}
+  .chat-msg{max-width:85%; padding:9px 13px; border-radius:12px; font-size:13.5px; line-height:1.5;}
+  .chat-msg.user{align-self:flex-end; background:var(--rojo); color:#fff; border-bottom-right-radius:3px;}
+  .chat-msg.bot{align-self:flex-start; background:var(--negro3); color:var(--blanco); border-bottom-left-radius:3px;}
+  .chat-input-wrap{display:flex; gap:8px; padding:12px; border-top:1px solid var(--borde);}
+  .chat-input-wrap input{
+    flex:1; background:var(--negro3); border:1px solid var(--borde); border-radius:20px;
+    padding:9px 14px; color:var(--blanco); font-size:13.5px; font-family:inherit;
+  }
+  .chat-input-wrap input:focus{outline:none; border-color:var(--rojo);}
+  .chat-input-wrap button{
+    background:var(--rojo); color:#fff; border:none; width:36px; height:36px; border-radius:50%;
+    cursor:pointer; flex-shrink:0; display:flex; align-items:center; justify-content:center;
+  }
+
+  @media (max-width: 780px){
+    .franja-inner{grid-template-columns:1fr;}
+    .footer-top{grid-template-columns:1fr; gap:26px;}
+    .hero-stripe{display:none;}
+    .hero{padding:52px 18px 40px;}
+    .hero h1{font-size:clamp(30px,9vw,42px);}
+    .hero p{font-size:15px;}
+    .hero-actions .btn{flex:1 1 auto; justify-content:center; padding:13px 18px;}
+    .hero-sedes{gap:18px; margin-top:34px;}
+    .filtros{top:64px; padding:12px 18px;}
+    .header-inner{padding:12px 16px;}
+    .header-cta{padding:10px 12px;}
+    .catalogo{padding:34px 16px 60px;}
+    .catalogo h2{font-size:21px;}
+    .grid-productos{grid-template-columns:1fr; gap:16px;}
+    .franja{padding:44px 18px;}
+    .franja-stats{grid-template-columns:1fr 1fr; gap:12px;}
+    footer{padding:40px 18px 24px;}
+    .wa-flotante{bottom:16px; right:16px; width:52px; height:52px;}
+    .chat-panel{bottom:78px; right:12px; width:94vw; height:70vh;}
+  }
+  @media (max-width: 380px){
+    .franja-stats{grid-template-columns:1fr;}
+    .header-cta span.texto-cta{display:none;}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="logo" id="logo-header">MOTOS<span>TORO</span></div>
+    <a class="header-cta" id="wa-header" href="#" target="_blank" rel="noopener">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12c0 1.85.5 3.58 1.35 5.07L2 22l5.06-1.33A9.94 9.94 0 0012 22c5.52 0 10-4.48 10-10S17.52 2 12 2zm0 18a7.9 7.9 0 01-4.2-1.2l-.3-.19-3.12.82.83-3.04-.2-.31A7.93 7.93 0 014 12c0-4.41 3.59-8 8-8s8 3.59 8 8-3.59 8-8 8zm4.29-5.9c-.24-.12-1.4-.69-1.62-.77-.22-.08-.38-.12-.54.12-.16.24-.62.77-.76.93-.14.16-.28.18-.52.06-.24-.12-1-.37-1.9-1.18-.7-.63-1.18-1.4-1.32-1.64-.14-.24-.01-.37.11-.49.11-.11.24-.28.36-.42.12-.14.16-.24.24-.4.08-.16.04-.3-.02-.42-.06-.12-.54-1.3-.74-1.78-.19-.47-.39-.4-.54-.41-.14-.01-.3-.01-.46-.01s-.42.06-.64.3c-.22.24-.84.82-.84 2s.86 2.32.98 2.48c.12.16 1.7 2.6 4.13 3.64.58.25 1.03.4 1.38.51.58.18 1.11.16 1.53.1.47-.07 1.4-.57 1.6-1.12.2-.55.2-1.02.14-1.12-.06-.1-.22-.16-.46-.28z"/></svg>
+      <span class="texto-cta">Escríbenos</span>
+    </a>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="hero-stripe"></div>
+  <div class="hero-inner">
+    <h1><span id="hero-t1">Motos</span> <span class="accent" id="hero-t2">Toro</span><br><span id="hero-t3">hechas para las calles de Táchira.</span></h1>
+    <p id="hero-subtitulo">Motos nuevas, repuestos originales, cascos y accesorios. Consulta disponibilidad y precios directo por WhatsApp — cerramos el negocio en el concesionario.</p>
+    <div class="hero-actions">
+      <a class="btn btn-primario" href="#catalogo" id="btn-catalogo">Ver catálogo</a>
+      <a class="btn btn-secundario" id="wa-hero" href="#" target="_blank" rel="noopener">Hablar por WhatsApp</a>
+    </div>
+    <div class="hero-sedes" id="hero-sedes"></div>
+  </div>
+</section>
+
+<section class="catalogo wrap" id="motosan-seccion" style="display:none; padding-top:34px; padding-bottom:10px;">
+  <h2>🎡 Motosán disponible</h2>
+  <div class="sub">Paga una cuota semanal y participa en el sorteo mensual — mientras más rápido te pongas al día, más chance tienes.</div>
+  <div id="motosan-grupos-publico"></div>
+</section>
+
+<nav class="filtros" id="filtros">
+  <div class="filtros-inner" id="filtros-inner">
+    <button class="chip activo" data-cat="todas">Todas</button>
+  </div>
+  <div class="filtros-inner" id="filtros-etiquetas" style="display:none; margin-top:10px;"></div>
+</nav>
+
+<section class="catalogo wrap" id="catalogo">
+  <h2>Catálogo</h2>
+  <div class="sub" id="catalogo-sub">Cargando productos...</div>
+  <div class="grid-productos" id="grid-productos"></div>
+</section>
+
+<section class="catalogo wrap" id="videos-seccion" style="display:none; padding-top:10px;">
+  <h2>🎬 Síguenos</h2>
+  <div class="sub">Nuestros últimos videos en Instagram y TikTok.</div>
+  <div id="videos-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(300px,1fr)); gap:20px;"></div>
+</section>
+
+<section class="franja">
+  <div class="franja-inner">
+    <div>
+      <h2 id="franja-titulo">Concesionario Toro en Táchira</h2>
+      <p id="franja-texto1">Somos una empresa familiar con sedes en La Fría y Coloncito. Vendemos motos nuevas de la marca Toro, repuestos originales, cascos y accesorios, y ofrecemos servicio técnico en ambas tiendas.</p>
+      <p style="margin-top:14px;" id="franja-texto2">También manejamos planes de pago: crédito directo, Rapid Crédito, Plan Ahorro y Motosán — pregúntanos por WhatsApp cuál se ajusta a lo que buscas.</p>
+    </div>
+    <div class="franja-stats">
+      <div class="stat"><b>2</b><span>Sedes en Táchira</span></div>
+      <div class="stat"><b>4+</b><span>Planes de pago</span></div>
+      <div class="stat"><b>100%</b><span>Repuestos originales</span></div>
+      <div class="stat"><b>Toro</b><span>Marca aliada</span></div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-top">
+      <div>
+        <div class="footer-logo">MOTOS<span>TORO</span></div>
+        <p id="footer-descripcion">Motos, repuestos, cascos y accesorios de la marca Toro. Escríbenos por WhatsApp para consultar disponibilidad y precios.</p>
+      </div>
+      <div class="footer-col">
+        <h4>Sedes</h4>
+        <div id="footer-sedes"></div>
+      </div>
+      <div class="footer-col">
+        <h4>Contacto</h4>
+        <div><a id="wa-footer" href="#" target="_blank" rel="noopener">WhatsApp</a></div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <div>© <span id="anio"></span> MotosToro</div>
+      <div id="footer-bottom-texto">Concesionario autorizado Toro Motorcycles</div>
+    </div>
+  </div>
+</footer>
+
+<button class="wa-flotante" id="chat-flotante" onclick="toggleChat()" aria-label="Chat">
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
+</button>
+
+<div class="chat-panel" id="chat-panel">
+  <div class="chat-header">
+    <div>
+      <div class="chat-header-title">Asistente MotosToro</div>
+      <div class="chat-header-sub">Responde una IA, al instante</div>
+    </div>
+    <button onclick="toggleChat()">✕</button>
+  </div>
+  <div class="chat-mensajes" id="chat-mensajes">
+    <div class="chat-msg bot">¡Hola! 🏍️ Soy el asistente virtual de MotosToro. Pregúntame por modelos, precios o nuestros planes de pago (contado, crédito, Plan Ahorro, Motosán).</div>
+  </div>
+  <div class="chat-input-wrap">
+    <input type="text" id="chat-input" placeholder="Escribe tu pregunta..." onkeydown="if(event.key==='Enter') enviarMensajeChat()">
+    <button onclick="enviarMensajeChat()" aria-label="Enviar">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="#fff"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
+    </button>
+  </div>
+</div>
+
+<div class="detalle-bg" id="detalle-bg" onclick="if(event.target===this) cerrarDetalleProducto()">
+  <div class="detalle-modal">
+    <button class="detalle-cerrar" onclick="cerrarDetalleProducto()">✕</button>
+    <div id="detalle-contenido"></div>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = "https://yalmrlfchvpayeqrqzcu.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlhbG1ybGZjaHZwYXllcXJxemN1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUwNzY4NDEsImV4cCI6MjEwMDY1Mjg0MX0.8FugQynmYVO1T1cmp3Tf3_nk7XIo4fwrsIqi9aexx4w";
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const WHATSAPP_NUMERO = "584246925816"; // formato internacional sin + ni espacios — cámbialo aquí cuando tengan el definitivo
+
+document.getElementById('anio').textContent = new Date().getFullYear();
+
+function linkWhatsapp(mensaje){
+  return `https://wa.me/${WHATSAPP_NUMERO}?text=${encodeURIComponent(mensaje)}`;
+}
+
+['wa-header','wa-hero','wa-footer'].forEach(id=>{
+  document.getElementById(id).href = linkWhatsapp('Hola, quisiera más información sobre las motos Toro.');
+});
+
+function money(n){
+  return '$' + Number(n||0).toLocaleString('es-VE', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+let TODOS_LOS_PRODUCTOS = [];
+let COLORES_POR_PRODUCTO = {};
+let FOTOS_POR_PRODUCTO = {};
+let CATEGORIA_ACTIVA = 'todas';
+let ETIQUETA_ACTIVA = 'todas';
+
+async function cargarMotosanPublico(){
+  const { data: grupos } = await sb.from('motosan_grupos')
+    .select('*, motosan_grupo_motos(*, productos(nombre, imagen_url))')
+    .eq('activo', true)
+    .order('created_at', {ascending:false});
+
+  const seccion = document.getElementById('motosan-seccion');
+  const cont = document.getElementById('motosan-grupos-publico');
+
+  const gruposConMotos = (grupos||[]).filter(g => (g.motosan_grupo_motos||[]).length);
+  if(!gruposConMotos.length){ seccion.style.display = 'none'; return; }
+
+  seccion.style.display = 'block';
+  cont.innerHTML = gruposConMotos.map(g => `
+    <div class="motosan-grupo">
+      <h3>${g.nombre}</h3>
+      <div class="sede-tag">Disponible en La Fría y Coloncito · ${g.semanas_totales} semanas de plazo</div>
+      <div class="motosan-motos">
+        ${g.motosan_grupo_motos.map(m => `
+          <div class="motosan-moto-card">
+            <div class="nombre">${m.productos?.nombre || 'Moto'}</div>
+            <div class="cuota">${money(m.cuota_semanal)} <span>/ semana</span></div>
+            <div class="total">Precio total: ${money(m.monto_moto)}</div>
+            <a class="card-btn" href="${linkWhatsapp(`Hola, me interesa el Motosán "${g.nombre}" para la ${m.productos?.nombre} (cuota ${money(m.cuota_semanal)}/semana)`)}" target="_blank" rel="noopener">Quiero unirme</a>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `).join('');
+}
+
+async function cargarCatalogo(){
+  const { data: config } = await sb.from('tienda_config').select('*').single();
+  if(config?.logo_url){
+    document.getElementById('logo-header').innerHTML = `<img src="${config.logo_url}" style="height:52px; display:block;">`;
+  }
+
+  const { data: contenido } = await sb.from('contenido_tienda').select('*');
+  const textos = {};
+  (contenido||[]).forEach(c => { if(c.valor) textos[c.clave] = c.valor; });
+  const aplicarTexto = (id, clave) => { if(textos[clave]) document.getElementById(id).textContent = textos[clave]; };
+  aplicarTexto('hero-t1', 'hero_titulo_1');
+  aplicarTexto('hero-t2', 'hero_titulo_2');
+  aplicarTexto('hero-t3', 'hero_titulo_3');
+  aplicarTexto('hero-subtitulo', 'hero_subtitulo');
+  aplicarTexto('btn-catalogo', 'boton_catalogo');
+  aplicarTexto('wa-hero', 'boton_whatsapp');
+  aplicarTexto('franja-titulo', 'franja_titulo');
+  aplicarTexto('franja-texto1', 'franja_texto1');
+  aplicarTexto('franja-texto2', 'franja_texto2');
+  aplicarTexto('footer-descripcion', 'footer_descripcion');
+  aplicarTexto('footer-bottom-texto', 'footer_bottom');
+
+  const { data: sedes } = await sb.from('sedes').select('*').eq('activa', true).order('nombre');
+  document.getElementById('hero-sedes').innerHTML = (sedes||[]).map(s =>
+    `<div class="hero-sede"><b>${s.nombre}</b>${s.ubicacion || 'Táchira, Venezuela'}</div>`
+  ).join('');
+  document.getElementById('footer-sedes').innerHTML = (sedes||[]).map(s =>
+    `<div>${s.nombre}${s.ubicacion ? ' — ' + s.ubicacion : ''}</div>`
+  ).join('');
+
+  const { data: categorias } = await sb.from('categorias').select('*').order('nombre');
+  cargarMotosanPublico();
+  const { data: productos, error } = await sb.from('productos')
+    .select('*, categorias(id, nombre)')
+    .eq('activo', true)
+    .eq('mostrar_en_tienda_publica', true)
+    .order('nombre');
+
+  if(error){
+    document.getElementById('catalogo-sub').textContent = 'No se pudo cargar el catálogo. Intenta recargar la página.';
+    return;
+  }
+
+  TODOS_LOS_PRODUCTOS = productos || [];
+
+  const { data: colores } = await sb.from('producto_colores').select('*').order('orden');
+  COLORES_POR_PRODUCTO = {};
+  (colores||[]).forEach(c => {
+    if(!COLORES_POR_PRODUCTO[c.producto_id]) COLORES_POR_PRODUCTO[c.producto_id] = [];
+    COLORES_POR_PRODUCTO[c.producto_id].push(c);
+  });
+
+  const { data: fotos } = await sb.from('producto_fotos').select('*').order('orden');
+  FOTOS_POR_PRODUCTO = {};
+  (fotos||[]).forEach(f => {
+    if(!FOTOS_POR_PRODUCTO[f.producto_id]) FOTOS_POR_PRODUCTO[f.producto_id] = [];
+    FOTOS_POR_PRODUCTO[f.producto_id].push(f);
+  });
+
+  const filtrosInner = document.getElementById('filtros-inner');
+  (categorias||[]).forEach(cat=>{
+    const usaCategoria = TODOS_LOS_PRODUCTOS.some(p => p.categoria_id === cat.id);
+    if(!usaCategoria) return;
+    const btn = document.createElement('button');
+    btn.className = 'chip';
+    btn.dataset.cat = cat.id;
+    btn.textContent = cat.nombre;
+    btn.onclick = () => seleccionarCategoria(cat.id, btn);
+    filtrosInner.appendChild(btn);
+  });
+  document.querySelector('.chip[data-cat="todas"]').onclick = (e) => seleccionarCategoria('todas', e.target);
+
+  renderProductos();
+}
+
+function seleccionarCategoria(catId, btn){
+  CATEGORIA_ACTIVA = catId;
+  ETIQUETA_ACTIVA = 'todas';
+  document.querySelectorAll('.chip').forEach(c=>c.classList.remove('activo'));
+  btn.classList.add('activo');
+  renderProductos();
+}
+
+function seleccionarEtiqueta(etiqueta, btn){
+  ETIQUETA_ACTIVA = etiqueta;
+  document.querySelectorAll('#filtros-etiquetas .chip').forEach(c=>c.classList.remove('activo'));
+  btn.classList.add('activo');
+  renderProductos();
+}
+
+function renderFiltrosEtiquetas(listaBase){
+  const cont = document.getElementById('filtros-etiquetas');
+  const etiquetas = [...new Set(listaBase.flatMap(p => p.etiquetas || []))];
+  if(!etiquetas.length){ cont.style.display = 'none'; cont.innerHTML = ''; return; }
+  cont.style.display = 'flex';
+  cont.innerHTML = `<button class="chip ${ETIQUETA_ACTIVA==='todas'?'activo':''}" onclick="seleccionarEtiqueta('todas', this)">Todos los tipos</button>` +
+    etiquetas.map(t => `<button class="chip ${ETIQUETA_ACTIVA===t?'activo':''}" onclick="seleccionarEtiqueta('${t.replace(/'/g,"\\'")}', this)">${t}</button>`).join('');
+}
+
+function renderProductos(){
+  const grid = document.getElementById('grid-productos');
+  const sub = document.getElementById('catalogo-sub');
+
+  const listaPorCategoria = CATEGORIA_ACTIVA === 'todas'
+    ? TODOS_LOS_PRODUCTOS
+    : TODOS_LOS_PRODUCTOS.filter(p => p.categoria_id === CATEGORIA_ACTIVA);
+
+  renderFiltrosEtiquetas(listaPorCategoria);
+
+  const lista = ETIQUETA_ACTIVA === 'todas'
+    ? listaPorCategoria
+    : listaPorCategoria.filter(p => (p.etiquetas||[]).includes(ETIQUETA_ACTIVA));
+
+  sub.textContent = `${lista.length} producto${lista.length===1?'':'s'} disponible${lista.length===1?'':'s'}`;
+
+  if(!lista.length){
+    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;">Pronto vamos a tener productos disponibles en esta categoría. Escríbenos por WhatsApp mientras tanto.</div>`;
+    return;
+  }
+
+  grid.innerHTML = lista.map(p => {
+    const colores = COLORES_POR_PRODUCTO[p.id] || [];
+    const fotos = FOTOS_POR_PRODUCTO[p.id] || [];
+    const imagenInicial = p.imagen_url || '';
+    return `
+    <div class="card">
+      <div class="card-img" id="img-${p.id}" onclick="abrirDetalleProducto('${p.id}')" style="cursor:pointer;">
+        ${imagenInicial ? `<img src="${imagenInicial}" alt="${p.nombre}" loading="lazy">` : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--carbon);font-size:12px;">Sin foto</div>`}
+        ${p.categorias?.nombre ? `<span class="card-cat">${p.categorias.nombre}</span>` : ''}
+      </div>
+      <div class="card-body">
+        ${fotos.length ? `
+          <div class="galeria-mini">
+            ${imagenInicial ? `<img src="${imagenInicial}" class="mini activa" onclick="cambiarFotoPrincipal('${p.id}', '${imagenInicial}', this)">` : ''}
+            ${fotos.map(f => `<img src="${f.imagen_url}" class="mini" onclick="cambiarFotoPrincipal('${p.id}', '${f.imagen_url}', this)">`).join('')}
+          </div>
+        ` : ''}
+        <h3 style="cursor:pointer;" onclick="abrirDetalleProducto('${p.id}')">${p.nombre}</h3>
+        <p>${p.descripcion || ''}</p>
+        ${colores.length ? `
+          <div class="color-swatches" id="swatches-${p.id}">
+            ${colores.map(c => `
+              <button class="swatch ${!c.disponible ? 'agotado' : ''}" style="background:${c.hex_color};"
+                title="${c.nombre_color}${c.disponible ? '' : ' — agotado'}"
+                onclick="seleccionarColor('${p.id}', '${c.id}')" data-color-id="${c.id}"></button>
+            `).join('')}
+          </div>
+        ` : ''}
+        ${Number(p.precio) > 0 ? `<div class="card-precio">${money(p.precio)}</div>` : `<div class="card-precio consultar">Precio a consultar</div>`}
+        <a class="card-btn" href="${linkWhatsapp('Hola, me interesa: ' + p.nombre)}" id="btn-wa-${p.id}" target="_blank" rel="noopener">Preguntar por este producto</a>
+      </div>
+    </div>
+  `;}).join('');
+}
+
+function abrirDetalleProducto(productoId){
+  const p = TODOS_LOS_PRODUCTOS.find(x => x.id === productoId);
+  if(!p) return;
+  const colores = COLORES_POR_PRODUCTO[p.id] || [];
+  const fotos = FOTOS_POR_PRODUCTO[p.id] || [];
+  const imagenInicial = p.imagen_url || (fotos[0]?.imagen_url) || '';
+
+  document.getElementById('detalle-contenido').innerHTML = `
+    <div class="detalle-grid">
+      <div class="detalle-img" id="detalle-img">
+        ${imagenInicial ? `<img src="${imagenInicial}" alt="${p.nombre}">` : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--carbon);">Sin foto</div>`}
+      </div>
+      <div class="detalle-info">
+        ${p.categorias?.nombre ? `<div class="cat">${p.categorias.nombre}</div>` : ''}
+        <h2>${p.nombre}</h2>
+        <p>${p.descripcion || 'Pregúntanos por WhatsApp para más detalles de este producto.'}</p>
+        ${fotos.length ? `
+          <div class="galeria-mini" style="margin-bottom:18px;">
+            ${imagenInicial ? `<img src="${imagenInicial}" class="mini activa" onclick="cambiarFotoDetalle('${imagenInicial}', this)">` : ''}
+            ${fotos.map(f => `<img src="${f.imagen_url}" class="mini" onclick="cambiarFotoDetalle('${f.imagen_url}', this)">`).join('')}
+          </div>
+        ` : ''}
+        ${colores.length ? `
+          <div class="color-swatches">
+            ${colores.map(c => `
+              <button class="swatch ${!c.disponible ? 'agotado' : ''}" style="background:${c.hex_color};"
+                title="${c.nombre_color}${c.disponible ? '' : ' — agotado'}"
+                onclick="cambiarFotoDetalle('${c.imagen_url || imagenInicial}', this)"></button>
+            `).join('')}
+          </div>
+        ` : ''}
+        ${Number(p.precio) > 0 ? `<div class="detalle-precio">${money(p.precio)}</div>` : `<div class="card-precio consultar" style="margin-bottom:20px;">Precio a consultar</div>`}
+        <a class="card-btn" href="${linkWhatsapp('Hola, me interesa: ' + p.nombre)}" target="_blank" rel="noopener">Preguntar por este producto</a>
+      </div>
+    </div>
+  `;
+  document.getElementById('detalle-bg').classList.add('activo');
+  document.body.style.overflow = 'hidden';
+}
+
+function cambiarFotoDetalle(url, el){
+  if(!url) return;
+  document.getElementById('detalle-img').innerHTML = `<img src="${url}" alt="">`;
+  if(el){
+    el.parentElement.querySelectorAll('.mini').forEach(m=>m.classList.remove('activa'));
+    if(el.classList.contains('mini')) el.classList.add('activa');
+  }
+}
+
+function cerrarDetalleProducto(){
+  document.getElementById('detalle-bg').classList.remove('activo');
+  document.body.style.overflow = '';
+}
+
+document.addEventListener('keydown', e => { if(e.key === 'Escape') cerrarDetalleProducto(); });
+
+function cambiarFotoPrincipal(productoId, url, el){
+  const imgWrap = document.getElementById('img-'+productoId);
+  const catBadge = imgWrap.querySelector('.card-cat');
+  imgWrap.innerHTML = `<img src="${url}" alt="" loading="lazy">` + (catBadge ? catBadge.outerHTML : '');
+  el.parentElement.querySelectorAll('.mini').forEach(m=>m.classList.remove('activa'));
+  el.classList.add('activa');
+}
+
+function seleccionarColor(productoId, colorId){
+  const color = (COLORES_POR_PRODUCTO[productoId]||[]).find(c => c.id === colorId);
+  if(!color) return;
+
+  const imgWrap = document.getElementById('img-'+productoId);
+  const catBadge = imgWrap.querySelector('.card-cat');
+  if(color.imagen_url){
+    imgWrap.innerHTML = `<img src="${color.imagen_url}" alt="${color.nombre_color}" loading="lazy">` + (catBadge ? catBadge.outerHTML : '');
+  }
+
+  document.querySelectorAll(`#swatches-${productoId} .swatch`).forEach(s => s.classList.remove('activo'));
+  document.querySelector(`#swatches-${productoId} .swatch[data-color-id="${colorId}"]`).classList.add('activo');
+
+  const producto = TODOS_LOS_PRODUCTOS.find(p => p.id === productoId);
+  const btnWa = document.getElementById('btn-wa-'+productoId);
+  if(btnWa && producto){
+    btnWa.href = linkWhatsapp(`Hola, me interesa: ${producto.nombre} en color ${color.nombre_color}${color.disponible ? '' : ' (vi que está agotado, ¿cuándo llega?)'}`);
+  }
+}
+
+/* =========================================================
+   CHAT CON IA
+========================================================= */
+let CHAT_HISTORIAL = [];
+let CHAT_ENVIANDO = false;
+
+function toggleChat(){
+  document.getElementById('chat-panel').classList.toggle('activo');
+  const panel = document.getElementById('chat-panel');
+  if(panel.classList.contains('activo')) document.getElementById('chat-input').focus();
+}
+
+function agregarMensajeChat(rol, texto){
+  const cont = document.getElementById('chat-mensajes');
+  const div = document.createElement('div');
+  div.className = 'chat-msg ' + rol;
+  div.textContent = texto;
+  cont.appendChild(div);
+  cont.scrollTop = cont.scrollHeight;
+  return div;
+}
+
+async function enviarMensajeChat(){
+  if(CHAT_ENVIANDO) return;
+  const input = document.getElementById('chat-input');
+  const texto = input.value.trim();
+  if(!texto) return;
+  input.value = '';
+  CHAT_ENVIANDO = true;
+
+  agregarMensajeChat('user', texto);
+  CHAT_HISTORIAL.push({ role: 'user', content: texto });
+
+  const escribiendo = agregarMensajeChat('bot', 'Escribiendo...');
+
+  try{
+    const res = await fetch('/.netlify/functions/chat', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ messages: CHAT_HISTORIAL })
+    });
+    const data = await res.json();
+    escribiendo.remove();
+
+    if(data.reply){
+      agregarMensajeChat('bot', data.reply);
+      CHAT_HISTORIAL.push({ role: 'assistant', content: data.reply });
+    } else {
+      agregarMensajeChat('bot', 'Tuve un problema respondiendo. Escríbenos directo por WhatsApp y te ayudamos.');
+    }
+  } catch(err){
+    escribiendo.remove();
+    agregarMensajeChat('bot', 'No pude conectarme en este momento. Intenta de nuevo en un rato, o escríbenos por WhatsApp.');
+  }
+
+  CHAT_ENVIANDO = false;
+}
+
+async function cargarVideosTienda(){
+  const { data: videos } = await sb.from('videos_tienda').select('*').eq('activo', true).order('orden');
+  const seccion = document.getElementById('videos-seccion');
+  const grid = document.getElementById('videos-grid');
+  if(!videos || !videos.length){ seccion.style.display = 'none'; return; }
+
+  seccion.style.display = 'block';
+  grid.innerHTML = videos.map(v => {
+    if(v.plataforma === 'instagram'){
+      return `<blockquote class="instagram-media" data-instgrm-permalink="${v.url}" data-instgrm-version="14" style="margin:0; width:100%;"></blockquote>`;
+    }
+    return `<blockquote class="tiktok-embed" cite="${v.url}" style="margin:0 auto; max-width:100%;"><section></section></blockquote>`;
+  }).join('');
+
+  if(videos.some(v => v.plataforma === 'instagram')){
+    const s = document.createElement('script');
+    s.async = true;
+    s.src = 'https://www.instagram.com/embed.js';
+    s.onload = () => window.instgrm?.Embeds?.process();
+    document.body.appendChild(s);
+  }
+  if(videos.some(v => v.plataforma === 'tiktok')){
+    const s = document.createElement('script');
+    s.async = true;
+    s.src = 'https://www.tiktok.com/embed.js';
+    document.body.appendChild(s);
+  }
+}
+
+cargarCatalogo();
+cargarVideosTienda();
+</script>
+
+<div id="scroll-controles">
+  <button id="btn-scroll-top" title="Subir al inicio" aria-label="Subir al inicio" onclick="window.scrollTo({top:0, behavior:'smooth'})">↑</button>
+  <button id="btn-scroll-bottom" title="Bajar al final" aria-label="Bajar al final" onclick="window.scrollTo({top:document.body.scrollHeight, behavior:'smooth'})">↓</button>
+</div>
+<script>
+  const scrollControles = document.getElementById('scroll-controles');
+  const btnScrollTop = document.getElementById('btn-scroll-top');
+  const btnScrollBottom = document.getElementById('btn-scroll-bottom');
+  function actualizarControlesScroll(){
+    const yaAbajo = (window.innerHeight + window.scrollY) >= (document.body.scrollHeight - 40);
+    const yaArriba = window.scrollY < 200;
+    scrollControles.style.display = document.body.scrollHeight > window.innerHeight * 1.4 ? 'flex' : 'none';
+    btnScrollTop.style.display = yaArriba ? 'none' : 'flex';
+    btnScrollBottom.style.display = yaAbajo ? 'none' : 'flex';
+  }
+  window.addEventListener('scroll', actualizarControlesScroll);
+  window.addEventListener('resize', actualizarControlesScroll);
+  setTimeout(actualizarControlesScroll, 800);
+</script>
+</body>
+</html>
