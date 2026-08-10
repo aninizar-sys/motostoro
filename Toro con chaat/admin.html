@@ -895,10 +895,28 @@ function buscarProductoInput(txt){
   lista.style.display = 'block';
 }
 
-function agregarProductoAVenta(productoId){
+async function agregarProductoAVenta(productoId){
   const producto = ESTADO.productos.find(p=>p.id===productoId);
   if(!producto) return;
   const esMoto = esProductoMoto(productoId);
+
+  // Si es moto, revisa si hay un apartado ACTIVO de esta misma sede sobre este modelo.
+  // Esto evita vender por error una unidad que ya está comprometida con otro cliente.
+  if(esMoto){
+    const { data: apartadosActivos } = await sb.from('apartados')
+      .select('*, clientes(nombre)')
+      .eq('producto_id', productoId).eq('sede_id', ESTADO.sedeSeleccionada).eq('estado', 'activo');
+    if(apartadosActivos && apartadosActivos.length){
+      const nombres = apartadosActivos.map(a => a.clientes?.nombre || 'cliente sin nombre').join(', ');
+      const continuar = confirm(
+        `⚠️ Atención: "${producto.nombre}" tiene ${apartadosActivos.length} apartado(s) activo(s) a nombre de: ${nombres}.\n\n` +
+        `Verifica que la unidad que vas a vender NO sea la que está apartada (revisa serial/placa) antes de continuar.\n\n` +
+        `¿Continuar con la venta de todas formas?`
+      );
+      if(!continuar) return;
+    }
+  }
+
   const existente = !esMoto && ESTADO.carritoVenta.find(l=>l.producto_id===productoId);
   if(existente){ existente.cantidad += 1; }
   else {
@@ -3578,29 +3596,61 @@ async function renderInventario(){
   cont.innerHTML = `<div class="empty">Cargando...</div>`;
 
   const { data: productos } = await sb.from('productos').select('*').eq('activo', true).order('nombre');
-  const { data: inv } = await sb.from('inventario').select('*').eq('sede_id', ESTADO.sedeSeleccionada);
-  const invMap = {};
-  (inv||[]).forEach(r => invMap[r.producto_id] = r.cantidad);
+  // Trae el inventario de TODAS las sedes (permitido de solo lectura) para poder mostrar cuánto hay en cada una
+  const { data: inv } = await sb.from('inventario').select('*');
+  const invMap = {};      // producto_id -> cantidad en la sede seleccionada
+  const invOtras = {};    // producto_id -> [{sede, cantidad}, ...] en las demás sedes
+  (inv||[]).forEach(r => {
+    if(r.sede_id === ESTADO.sedeSeleccionada){
+      invMap[r.producto_id] = r.cantidad;
+    } else {
+      (invOtras[r.producto_id] ||= []).push({ sede: sedeNombre(r.sede_id), cantidad: r.cantidad });
+    }
+  });
+
+  ESTADO._invProductosCache = productos || [];
+  ESTADO._invMapCache = invMap;
+  ESTADO._invOtrasCache = invOtras;
 
   cont.innerHTML = `
     <div class="card">
       <h3>Inventario — ${sedeNombre(ESTADO.sedeSeleccionada)}</h3>
-      <table>
-        <thead><tr><th>Producto</th><th>Precio de venta</th><th>Costo</th><th>Stock en esta sede</th><th></th></tr></thead>
-        <tbody>
-          ${(productos||[]).map(p=>`
-            <tr>
-              <td>${p.nombre}</td>
-              <td><input type="number" min="0" step="0.01" id="precio-${p.id}" value="${p.precio}" style="width:90px; padding:6px; background:var(--negro3); border:1px solid var(--borde); border-radius:6px; color:#fff;"></td>
-              <td><input type="number" min="0" step="0.01" id="costo-${p.id}" value="${p.costo||0}" style="width:90px; padding:6px; background:var(--negro3); border:1px solid var(--borde); border-radius:6px; color:#fff;"></td>
-              <td>${invMap[p.id] ?? 0} — <input type="number" id="ajuste-${p.id}" style="width:70px; padding:6px; background:var(--negro3); border:1px solid var(--borde); border-radius:6px; color:#fff;" placeholder="Nueva cant."></td>
-              <td><button class="btn chico" onclick="guardarFilaInventario('${p.id}')">Guardar</button></td>
-            </tr>
-          `).join('') || `<tr><td colspan="5" class="empty">No hay productos creados aún. Ve a la pestaña Productos.</td></tr>`}
-        </tbody>
-      </table>
+      <input type="text" id="buscar-inventario" placeholder="Buscar por nombre o código..." style="width:100%; padding:8px; margin-bottom:12px; background:var(--negro3); border:1px solid var(--borde); border-radius:6px; color:#fff;" oninput="filtrarTablaInventario()">
+      <div id="tabla-inventario-wrap"></div>
     </div>
   `;
+  pintarTablaInventario(productos || []);
+}
+
+function pintarTablaInventario(productos){
+  const invMap = ESTADO._invMapCache || {};
+  const invOtras = ESTADO._invOtrasCache || {};
+  document.getElementById('tabla-inventario-wrap').innerHTML = `
+    <table>
+      <thead><tr><th>Producto</th><th>Precio de venta</th><th>Costo</th><th>Stock en esta sede</th><th>Stock en otras sedes</th><th></th></tr></thead>
+      <tbody>
+        ${productos.map(p=>`
+          <tr>
+            <td>${p.nombre}</td>
+            <td><input type="number" min="0" step="0.01" id="precio-${p.id}" value="${p.precio}" style="width:90px; padding:6px; background:var(--negro3); border:1px solid var(--borde); border-radius:6px; color:#fff;"></td>
+            <td><input type="number" min="0" step="0.01" id="costo-${p.id}" value="${p.costo||0}" style="width:90px; padding:6px; background:var(--negro3); border:1px solid var(--borde); border-radius:6px; color:#fff;"></td>
+            <td>${invMap[p.id] ?? 0} — <input type="number" id="ajuste-${p.id}" style="width:70px; padding:6px; background:var(--negro3); border:1px solid var(--borde); border-radius:6px; color:#fff;" placeholder="Nueva cant."></td>
+            <td style="font-size:13px; color:var(--texto2);">${(invOtras[p.id]||[]).filter(x=>x.cantidad>0).map(x=>`${x.sede}: <b style="color:#fff;">${x.cantidad}</b>`).join(' · ') || '—'}</td>
+            <td><button class="btn chico" onclick="guardarFilaInventario('${p.id}')">Guardar</button></td>
+          </tr>
+        `).join('') || `<tr><td colspan="6" class="empty">No hay productos creados aún. Ve a la pestaña Productos.</td></tr>`}
+      </tbody>
+    </table>
+  `;
+}
+
+function filtrarTablaInventario(){
+  const q = (document.getElementById('buscar-inventario').value || '').toLowerCase().trim();
+  const todos = ESTADO._invProductosCache || [];
+  const filtrados = !q ? todos : todos.filter(p =>
+    (p.nombre||'').toLowerCase().includes(q) || (p.sku||'').toLowerCase().includes(q)
+  );
+  pintarTablaInventario(filtrados);
 }
 
 async function guardarFilaInventario(productoId){
