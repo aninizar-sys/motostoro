@@ -4408,7 +4408,14 @@ async function guardarEdicionProducto(productoId){
   const { error } = await sb.from('productos').update({ nombre, categoria_id, precio, sku, descripcion, etiquetas, mostrar_en_tienda_publica }).eq('id', productoId);
   if(error){ msg.innerHTML = `<div class="msg err">Error: ${error.message}</div>`; return; }
   msg.innerHTML = `<div class="msg ok">Cambios guardados.</div>`;
-  renderProductos();
+
+  // Actualiza solo la fila en la tabla de fondo, sin recargar toda la pestaña (así no se pierde el scroll ni el filtro)
+  const p = ESTADO.catalogoProductos.find(x=>x.id===productoId);
+  if(p){
+    const cat = (ESTADO.catalogoCategorias||[]).find(c=>c.id===categoria_id);
+    Object.assign(p, { nombre, categoria_id, precio, sku, descripcion, etiquetas, mostrar_en_tienda_publica, categorias: cat ? {id:cat.id, nombre:cat.nombre} : null });
+  }
+  renderTablaCatalogoProductos();
 }
 
 async function subirFotoPrincipal(input, productoId){
