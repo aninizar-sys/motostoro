@@ -156,6 +156,9 @@
   .modal{background:var(--negro2); border:1px solid var(--borde); border-radius:12px; padding:24px; width:400px; max-width:90vw;}
   .modal h3{margin-bottom:16px;}
   .modal .acciones{display:flex; gap:10px; margin-top:18px;}
+  .modal-ancho{background:var(--negro2); border:1px solid var(--borde); border-radius:12px; padding:24px; width:640px; max-width:92vw; max-height:88vh; overflow-y:auto; position:relative;}
+  .modal-cerrar{position:absolute; top:14px; right:16px; cursor:pointer; font-size:20px; color:var(--carbon); line-height:1;}
+  .modal-cerrar:hover{color:#fff;}
 
   .empty{color:var(--carbon); font-size:13px; text-align:center; padding:30px 0;}
   .btn-menu-movil{display:none; background:none; border:none; color:var(--blanco); font-size:26px; cursor:pointer; padding:4px 8px; line-height:1;}
@@ -251,6 +254,11 @@
 <!-- Modal genérico (abonos, gastos, etc.) -->
 <div class="modal-bg" id="modal-bg">
   <div class="modal" id="modal-contenido"></div>
+</div>
+
+<!-- Modal ancho (editar producto) -->
+<div class="modal-bg" id="modal-bg-producto" onclick="if(event.target===this) cerrarEditarProducto()">
+  <div class="modal-ancho" id="modal-producto-contenido"></div>
 </div>
 
 <script>
@@ -4224,7 +4232,6 @@ async function renderProductos(){
       </div>
     </div>
 
-    <div id="editar-producto-panel"></div>
   `;
   renderTablaCatalogoProductos();
 }
@@ -4316,10 +4323,15 @@ async function crearProducto(){
 }
 
 /* ---------- Editar producto: datos, foto principal, galería, colores ---------- */
+function cerrarEditarProducto(){
+  document.getElementById('modal-bg-producto').classList.remove('activo');
+  document.getElementById('modal-producto-contenido').innerHTML = '';
+}
+
 async function abrirEditarProducto(productoId){
-  const panel = document.getElementById('editar-producto-panel');
+  const panel = document.getElementById('modal-producto-contenido');
   panel.innerHTML = `<div class="empty">Cargando...</div>`;
-  panel.scrollIntoView({ behavior:'smooth', block:'start' });
+  document.getElementById('modal-bg-producto').classList.add('activo');
 
   const { data: producto } = await sb.from('productos').select('*, categorias(id, nombre)').eq('id', productoId).single();
   const { data: categorias } = await sb.from('categorias').select('*').order('nombre');
@@ -4327,7 +4339,8 @@ async function abrirEditarProducto(productoId){
   const { data: colores } = await sb.from('producto_colores').select('*').eq('producto_id', productoId).order('orden');
 
   panel.innerHTML = `
-    <div class="card">
+    <span class="modal-cerrar" onclick="cerrarEditarProducto()">✕</span>
+    <div>
       <h3>Editar "${producto.nombre}"</h3>
       <div id="editar-msg"></div>
 
