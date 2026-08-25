@@ -4301,16 +4301,18 @@ function renderTablaCatalogoProductos(texto){
     return true;
   });
 
+  const esAdminGeneral = ESTADO.perfil?.rol === 'admin_general';
   tbody.innerHTML = filtrados.map(p=>`
     <tr><td>${p.sku||'—'}</td><td>${p.nombre}</td><td>${p.categorias?.nombre||'—'}</td><td>${money(p.precio)}</td>
       <td><button class="btn chico ${p.mostrar_en_tienda_publica ? 'secundario' : ''}" onclick="alternarVisibilidadTienda('${p.id}', ${!p.mostrar_en_tienda_publica})">${p.mostrar_en_tienda_publica ? '👁️ Visible' : '🚫 Oculto'}</button></td>
       <td><button class="btn chico secundario" onclick="abrirEditarProducto('${p.id}')">✏️ Editar</button></td>
-      <td><button class="btn chico secundario" onclick="abrirFusionProducto('${p.id}')">🔀 Fusionar</button></td></tr>
+      <td>${esAdminGeneral ? `<button class="btn chico secundario" onclick="abrirFusionProducto('${p.id}')">🔀 Fusionar</button>` : ''}</td></tr>
   `).join('') || `<tr><td colspan="7" class="empty">Sin productos que coincidan</td></tr>`;
 }
 
 /* ---------- Fusionar productos duplicados (mismo producto, distinto código/nombre entre sedes) ---------- */
 function abrirFusionProducto(productoId){
+  if(ESTADO.perfil?.rol !== 'admin_general'){ alert('Solo el administrador general puede fusionar productos, porque afecta el inventario de todas las sedes.'); return; }
   const p = ESTADO.catalogoProductos.find(x=>x.id===productoId);
   if(!p) return;
   const modal = document.getElementById('modal-contenido');
