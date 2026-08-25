@@ -870,7 +870,18 @@ async function cargarProductosYClientes(){
 
   const { data: invRows } = await sb.from('inventario').select('*').eq('sede_id', ESTADO.sedeSeleccionada);
   ESTADO.inventarioSede = {};
-  (invRows||[]).forEach(r => ESTADO.inventarioSede[r.producto_id] = r.cantidad);
+  ESTADO.precioSede = {};
+  (invRows||[]).forEach(r => {
+    ESTADO.inventarioSede[r.producto_id] = r.cantidad;
+    if(r.precio_override !== null && r.precio_override !== undefined) ESTADO.precioSede[r.producto_id] = r.precio_override;
+  });
+}
+
+/* Precio de venta efectivo para un producto EN LA SEDE seleccionada: usa el especial de esa sede si existe, si no el precio general */
+function precioEnSede(productoId){
+  const p = ESTADO.productos.find(x=>x.id===productoId);
+  const especial = ESTADO.precioSede?.[productoId];
+  return (especial !== undefined && especial !== null) ? Number(especial) : Number(p?.precio || 0);
 }
 
 function esProductoMoto(productoId){
@@ -897,7 +908,7 @@ function buscarProductoInput(txt){
   if(!results.length){ lista.innerHTML = `<div>Sin productos con stock en esta sede. Ve a Inventario para cargar stock.</div>`; lista.style.display='block'; return; }
   lista.innerHTML = results.map(p => `
     <div onclick="agregarProductoAVenta('${p.id}')">
-      ${p.nombre} — ${money(p.precio)}
+      ${p.nombre} — ${money(precioEnSede(p.id))}
       <div class="stock">Stock en esta sede: ${ESTADO.inventarioSede[p.id] ?? 0}</div>
     </div>
   `).join('');
@@ -931,7 +942,7 @@ async function agregarProductoAVenta(productoId){
   else {
     ESTADO.carritoVenta.push({
       producto_id: producto.id, nombre: producto.nombre,
-      precio_unitario: Number(producto.precio), cantidad: 1,
+      precio_unitario: precioEnSede(producto.id), cantidad: 1,
       esMoto, serial: '', placa: ''
     });
   }
@@ -1333,7 +1344,7 @@ async function abrirGrupoMotosan(grupoId){
         <div class="form-row" style="margin-bottom:0;">
           <label>Moto</label>
           <select id="mgm-producto" onchange="autocompletarMontoMotoGrupo(${grupo.semanas_totales})">
-            ${ESTADO.productos.map(p=>`<option value="${p.id}" data-precio="${p.precio}">${p.nombre} — ${money(p.precio)}</option>`).join('')}
+            ${ESTADO.productos.map(p=>`<option value="${p.id}" data-precio="${precioEnSede(p.id)}">${p.nombre} — ${money(precioEnSede(p.id))}</option>`).join('')}
           </select>
         </div>
         <div class="form-row" style="margin-bottom:0;">
@@ -1608,7 +1619,7 @@ async function renderPlanAhorro(){
         <div class="form-row">
           <label>Moto que va a ahorrar</label>
           <select id="pa-producto" onchange="autocompletarMontoPA()">
-            ${ESTADO.productos.map(p=>`<option value="${p.id}" data-precio="${p.precio}">${p.nombre} — ${money(p.precio)}</option>`).join('')}
+            ${ESTADO.productos.map(p=>`<option value="${p.id}" data-precio="${precioEnSede(p.id)}">${p.nombre} — ${money(precioEnSede(p.id))}</option>`).join('')}
           </select>
         </div>
         <div class="form-row"><label>Monto total de la moto (editable)</label><input type="number" id="pa-monto" min="0" step="0.01"></div>
@@ -1929,7 +1940,7 @@ function buscarProductoAp(txt){
   if(!results.length){ lista.innerHTML = `<div>Sin productos con stock en esta sede.</div>`; lista.style.display='block'; return; }
   lista.innerHTML = results.map(p => `
     <div onclick="seleccionarProductoAp('${p.id}')">
-      ${p.nombre} — ${money(p.precio)}
+      ${p.nombre} — ${money(precioEnSede(p.id))}
       <div class="stock">Stock en esta sede: ${ESTADO.inventarioSede[p.id] ?? 0}</div>
     </div>
   `).join('');
@@ -1943,7 +1954,7 @@ function seleccionarProductoAp(productoId){
   document.getElementById('ap-buscar-producto').value = producto.nombre;
   document.getElementById('ap-lista-productos').style.display = 'none';
   document.getElementById('ap-producto-seleccionado').textContent = `Stock disponible en esta sede: ${ESTADO.inventarioSede[productoId] ?? 0}`;
-  document.getElementById('ap-monto-total').value = producto.precio;
+  document.getElementById('ap-monto-total').value = precioEnSede(productoId);
 }
 
 async function crearApartado(){
@@ -3607,11 +3618,13 @@ async function renderInventario(){
   const { data: productos } = await sb.from('productos').select('*').eq('activo', true).order('nombre');
   // Trae el inventario de TODAS las sedes (permitido de solo lectura) para poder mostrar cuánto hay en cada una
   const { data: inv } = await sb.from('inventario').select('*');
-  const invMap = {};      // producto_id -> cantidad en la sede seleccionada
-  const invOtras = {};    // producto_id -> [{sede, cantidad}, ...] en las demás sedes
+  const invMap = {};        // producto_id -> cantidad en la sede seleccionada
+  const invPrecioMap = {};  // producto_id -> precio especial de esta sede (o undefined si usa el general)
+  const invOtras = {};      // producto_id -> [{sede, cantidad}, ...] en las demás sedes
   (inv||[]).forEach(r => {
     if(r.sede_id === ESTADO.sedeSeleccionada){
       invMap[r.producto_id] = r.cantidad;
+      if(r.precio_override !== null && r.precio_override !== undefined) invPrecioMap[r.producto_id] = r.precio_override;
     } else {
       (invOtras[r.producto_id] ||= []).push({ sede: sedeNombre(r.sede_id), cantidad: r.cantidad });
     }
@@ -3619,11 +3632,13 @@ async function renderInventario(){
 
   ESTADO._invProductosCache = productos || [];
   ESTADO._invMapCache = invMap;
+  ESTADO._invPrecioMapCache = invPrecioMap;
   ESTADO._invOtrasCache = invOtras;
 
   cont.innerHTML = `
     <div class="card">
       <h3>Inventario — ${sedeNombre(ESTADO.sedeSeleccionada)}</h3>
+      <p style="color:var(--texto2); font-size:13px; margin-bottom:10px;">El precio de venta se puede ajustar aparte para esta sede sin afectar a las demás. El costo sí es el mismo en todas las sedes.</p>
       <input type="text" id="buscar-inventario" placeholder="Buscar por nombre o código..." style="width:100%; padding:8px; margin-bottom:12px; background:var(--negro3); border:1px solid var(--borde); border-radius:6px; color:#fff;" oninput="filtrarTablaInventario()">
       <div id="tabla-inventario-wrap"></div>
     </div>
@@ -3633,24 +3648,39 @@ async function renderInventario(){
 
 function pintarTablaInventario(productos){
   const invMap = ESTADO._invMapCache || {};
+  const invPrecioMap = ESTADO._invPrecioMapCache || {};
   const invOtras = ESTADO._invOtrasCache || {};
   document.getElementById('tabla-inventario-wrap').innerHTML = `
     <table>
-      <thead><tr><th>Producto</th><th>Precio de venta</th><th>Costo</th><th>Stock en esta sede</th><th>Stock en otras sedes</th><th></th></tr></thead>
+      <thead><tr><th>Producto</th><th>Precio de venta (esta sede)</th><th>Costo (general)</th><th>Stock en esta sede</th><th>Stock en otras sedes</th><th></th></tr></thead>
       <tbody>
-        ${productos.map(p=>`
+        ${productos.map(p=>{
+          const tienePrecioEspecial = invPrecioMap[p.id] !== undefined;
+          const precioMostrado = tienePrecioEspecial ? invPrecioMap[p.id] : p.precio;
+          return `
           <tr>
             <td>${p.nombre}</td>
-            <td><input type="number" min="0" step="0.01" id="precio-${p.id}" value="${p.precio}" style="width:90px; padding:6px; background:var(--negro3); border:1px solid var(--borde); border-radius:6px; color:#fff;"></td>
+            <td>
+              <input type="number" min="0" step="0.01" id="precio-${p.id}" value="${precioMostrado}" style="width:90px; padding:6px; background:var(--negro3); border:1px solid var(--borde); border-radius:6px; color:#fff;">
+              <div style="font-size:11px; color:var(--texto2); margin-top:2px;">
+                ${tienePrecioEspecial ? `precio general: ${money(p.precio)} · <a href="#" onclick="event.preventDefault(); quitarPrecioEspecial('${p.id}')" style="color:var(--acento);">usar el general</a>` : 'precio general (todas las sedes)'}
+              </div>
+            </td>
             <td><input type="number" min="0" step="0.01" id="costo-${p.id}" value="${p.costo||0}" style="width:90px; padding:6px; background:var(--negro3); border:1px solid var(--borde); border-radius:6px; color:#fff;"></td>
             <td>${invMap[p.id] ?? 0} — <input type="number" id="ajuste-${p.id}" style="width:70px; padding:6px; background:var(--negro3); border:1px solid var(--borde); border-radius:6px; color:#fff;" placeholder="Nueva cant."></td>
             <td style="font-size:13px; color:var(--texto2);">${(invOtras[p.id]||[]).filter(x=>x.cantidad>0).map(x=>`${x.sede}: <b style="color:#fff;">${x.cantidad}</b>`).join(' · ') || '—'}</td>
             <td><button class="btn chico" onclick="guardarFilaInventario('${p.id}')">Guardar</button></td>
           </tr>
-        `).join('') || `<tr><td colspan="6" class="empty">No hay productos creados aún. Ve a la pestaña Productos.</td></tr>`}
+        `;}).join('') || `<tr><td colspan="6" class="empty">No hay productos creados aún. Ve a la pestaña Productos.</td></tr>`}
       </tbody>
     </table>
   `;
+}
+
+async function quitarPrecioEspecial(productoId){
+  await sb.from('inventario').update({ precio_override: null }).eq('sede_id', ESTADO.sedeSeleccionada).eq('producto_id', productoId);
+  delete ESTADO._invPrecioMapCache[productoId];
+  pintarTablaInventario(ESTADO._invProductosCache || []);
 }
 
 function filtrarTablaInventario(){
@@ -3663,33 +3693,42 @@ function filtrarTablaInventario(){
 }
 
 async function guardarFilaInventario(productoId){
-  const nuevoPrecio = parseFloat(document.getElementById('precio-'+productoId).value);
+  const nuevoPrecioSede = parseFloat(document.getElementById('precio-'+productoId).value);
   const nuevoCosto = parseFloat(document.getElementById('costo-'+productoId).value);
   const inputCantidad = document.getElementById('ajuste-'+productoId).value;
 
-  if(!isNaN(nuevoPrecio) || !isNaN(nuevoCosto)){
-    const cambios = {};
-    if(!isNaN(nuevoPrecio)) cambios.precio = nuevoPrecio;
-    if(!isNaN(nuevoCosto)) cambios.costo = nuevoCosto;
-    await sb.from('productos').update(cambios).eq('id', productoId);
+  // El costo es general (productos.costo)
+  if(!isNaN(nuevoCosto)){
+    await sb.from('productos').update({ costo: nuevoCosto }).eq('id', productoId);
   }
 
+  // El precio de venta y la cantidad son específicos de esta sede (tabla inventario)
+  const { data: existente } = await sb.from('inventario').select('*')
+    .eq('sede_id', ESTADO.sedeSeleccionada).eq('producto_id', productoId).maybeSingle();
+
+  const cambiosInv = {};
+  if(!isNaN(nuevoPrecioSede)) cambiosInv.precio_override = nuevoPrecioSede;
+  let nuevaCantidad = existente?.cantidad ?? 0;
   if(inputCantidad !== ''){
-    const nuevaCantidad = parseFloat(inputCantidad);
-    if(!isNaN(nuevaCantidad) && nuevaCantidad >= 0){
-      const { data: existente } = await sb.from('inventario').select('*')
-        .eq('sede_id', ESTADO.sedeSeleccionada).eq('producto_id', productoId).maybeSingle();
-      if(existente){
-        await sb.from('inventario').update({ cantidad: nuevaCantidad, updated_at: new Date().toISOString() }).eq('id', existente.id);
-      } else {
-        await sb.from('inventario').insert({ sede_id: ESTADO.sedeSeleccionada, producto_id: productoId, cantidad: nuevaCantidad });
-      }
-      await sb.from('movimientos_inventario').insert({
-        sede_id: ESTADO.sedeSeleccionada, producto_id: productoId, tipo: 'ajuste',
-        cantidad: nuevaCantidad, created_by: ESTADO.perfil.id
-      });
+    const c = parseFloat(inputCantidad);
+    if(!isNaN(c) && c >= 0){ nuevaCantidad = c; cambiosInv.cantidad = c; }
+  }
+
+  if(Object.keys(cambiosInv).length){
+    cambiosInv.updated_at = new Date().toISOString();
+    if(existente){
+      await sb.from('inventario').update(cambiosInv).eq('id', existente.id);
+    } else {
+      await sb.from('inventario').insert({ sede_id: ESTADO.sedeSeleccionada, producto_id: productoId, cantidad: nuevaCantidad, ...cambiosInv });
     }
   }
+
+  if(cambiosInv.cantidad !== undefined){
+    await sb.from('movimientos_inventario').insert({
+      sede_id: ESTADO.sedeSeleccionada, producto_id: productoId, tipo: 'ajuste',
+      cantidad: nuevaCantidad, created_by: ESTADO.perfil.id
+      });
+    }
 
   renderInventario();
 }
@@ -4277,7 +4316,7 @@ function abrirFusionProducto(productoId){
   const modal = document.getElementById('modal-contenido');
   modal.innerHTML = `
     <h3>Fusionar "${p.nombre}"</h3>
-    <p style="color:var(--texto2); font-size:14px; margin-bottom:12px;">Busca el producto duplicado. Se va a combinar TODO (inventario de ambas sedes, ventas, apartados, traslados, fotos, etc.) en uno solo, y se conservará el nombre/código/precio de <b>"${p.nombre}"</b>. El duplicado se borra.</p>
+    <p style="color:var(--texto2); font-size:14px; margin-bottom:12px;">Busca el producto duplicado. Se va a combinar TODO (inventario de ambas sedes, ventas, apartados, traslados, fotos, etc.) en uno solo, con el nombre/código de <b>"${p.nombre}"</b>. Si los dos tenían precio de venta distinto, cada sede conserva el suyo. El duplicado se borra.</p>
     <input type="text" id="fusion-buscar" placeholder="Buscar el producto duplicado por nombre o código..." oninput="buscarProductoFusion('${productoId}', this.value)" autocomplete="off">
     <div id="fusion-resultados" style="max-height:280px; overflow-y:auto; margin-top:10px;"></div>
     <div class="acciones"><button class="btn secundario" onclick="cerrarModal()">Cerrar</button></div>
@@ -4309,23 +4348,34 @@ async function confirmarFusionProducto(keepId, removeId){
   modal.innerHTML = `<div class="empty">Fusionando productos...</div>`;
 
   try {
-    // 1) Inventario: sumar cantidades por sede (si ambos productos tenían stock en la misma sede)
-    const { data: invRemove } = await sb.from('inventario').select('*').eq('producto_id', removeId);
+    // 1) Inventario: sumar cantidades por sede. Si los dos productos tenían precios distintos,
+    // se conserva ese precio como el precio especial de esa sede (para no perder la diferencia de precio entre sedes).
+    const { data: invRemove, error: errInv } = await sb.from('inventario').select('*').eq('producto_id', removeId);
+    if(errInv) throw new Error('Leyendo inventario del duplicado: ' + errInv.message);
     for(const fila of (invRemove||[])){
-      const { data: existente } = await sb.from('inventario').select('cantidad').eq('sede_id', fila.sede_id).eq('producto_id', keepId).maybeSingle();
+      const { data: existente, error: errEx } = await sb.from('inventario').select('cantidad, precio_override').eq('sede_id', fila.sede_id).eq('producto_id', keepId).maybeSingle();
+      if(errEx) throw new Error('Revisando stock existente: ' + errEx.message);
       const nuevaCantidad = (existente?.cantidad || 0) + fila.cantidad;
-      await sb.from('inventario').upsert({ sede_id: fila.sede_id, producto_id: keepId, cantidad: nuevaCantidad }, { onConflict: 'sede_id,producto_id' });
+      let precioAConservar = existente?.precio_override ?? fila.precio_override ?? null;
+      if(precioAConservar === null && Number(remove.precio) !== Number(keep.precio)){
+        precioAConservar = fila.precio_override ?? remove.precio;
+      }
+      const { error: errUp } = await sb.from('inventario').upsert({ sede_id: fila.sede_id, producto_id: keepId, cantidad: nuevaCantidad, precio_override: precioAConservar }, { onConflict: 'sede_id,producto_id' });
+      if(errUp) throw new Error('Sumando inventario: ' + errUp.message);
     }
-    await sb.from('inventario').delete().eq('producto_id', removeId);
+    const { error: errDelInv } = await sb.from('inventario').delete().eq('producto_id', removeId);
+    if(errDelInv) throw new Error('Borrando inventario del duplicado: ' + errDelInv.message);
 
     // 2) Reasignar el historial y referencias al producto que se conserva
     const tablasARelacionar = ['movimientos_inventario','venta_items','compra_items','motosan_grupo_motos','planes_ahorro','producto_colores','producto_fotos','traslados_inventario','apartados'];
     for(const tabla of tablasARelacionar){
-      await sb.from(tabla).update({ producto_id: keepId }).eq('producto_id', removeId);
+      const { error: errUpd } = await sb.from(tabla).update({ producto_id: keepId }).eq('producto_id', removeId);
+      if(errUpd) throw new Error(`Reasignando "${tabla}": ` + errUpd.message);
     }
 
     // 3) Borrar el producto duplicado
-    await sb.from('productos').delete().eq('id', removeId);
+    const { error: errDelProd } = await sb.from('productos').delete().eq('id', removeId);
+    if(errDelProd) throw new Error('Borrando el producto duplicado: ' + errDelProd.message);
 
     cerrarModal();
     renderProductos();
