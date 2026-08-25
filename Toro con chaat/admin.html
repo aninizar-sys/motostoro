@@ -890,7 +890,8 @@ function buscarProductoInput(txt){
       .slice(0, 30);
   } else {
     results = ESTADO.productos.filter(p =>
-      p.nombre.toLowerCase().includes(t) || (p.sku||'').toLowerCase().includes(t)
+      (ESTADO.inventarioSede[p.id] ?? 0) > 0 &&
+      (p.nombre.toLowerCase().includes(t) || (p.sku||'').toLowerCase().includes(t))
     ).slice(0,15);
   }
   if(!results.length){ lista.innerHTML = `<div>Sin productos con stock en esta sede. Ve a Inventario para cargar stock.</div>`; lista.style.display='block'; return; }
@@ -1923,7 +1924,7 @@ function buscarProductoAp(txt){
   if(!t){
     results = ESTADO.productos.filter(p => (ESTADO.inventarioSede[p.id] ?? 0) > 0).sort((a,b)=>a.nombre.localeCompare(b.nombre)).slice(0,30);
   } else {
-    results = ESTADO.productos.filter(p => p.nombre.toLowerCase().includes(t) || (p.sku||'').toLowerCase().includes(t)).slice(0,15);
+    results = ESTADO.productos.filter(p => (ESTADO.inventarioSede[p.id] ?? 0) > 0 && (p.nombre.toLowerCase().includes(t) || (p.sku||'').toLowerCase().includes(t))).slice(0,15);
   }
   if(!results.length){ lista.innerHTML = `<div>Sin productos con stock en esta sede.</div>`; lista.style.display='block'; return; }
   lista.innerHTML = results.map(p => `
@@ -3822,7 +3823,8 @@ function buscarProductoTraslado(txt){
       .slice(0, 30);
   } else {
     results = ESTADO.productos.filter(p =>
-      p.nombre.toLowerCase().includes(t) || (p.sku||'').toLowerCase().includes(t)
+      (ESTADO.inventarioSede[p.id] ?? 0) > 0 &&
+      (p.nombre.toLowerCase().includes(t) || (p.sku||'').toLowerCase().includes(t))
     ).slice(0,15);
   }
   if(!results.length){ lista.innerHTML = `<div>Sin productos con stock en esta sede.</div>`; lista.style.display='block'; return; }
@@ -4226,7 +4228,7 @@ async function renderProductos(){
         </div>
         <div class="form-row" style="margin-top:10px;"><input type="text" id="buscar-catalogo" placeholder="Buscar por nombre o código..." oninput="filtrarCatalogoPorTexto(this.value)"></div>
         <table>
-          <thead><tr><th>Código</th><th>Nombre</th><th>Categoría</th><th>Precio</th><th>Tienda</th><th></th></tr></thead>
+          <thead><tr><th>Código</th><th>Nombre</th><th>Categoría</th><th>Precio</th><th>Tienda</th><th></th><th></th></tr></thead>
           <tbody id="tbody-catalogo-productos"></tbody>
         </table>
       </div>
@@ -4263,8 +4265,73 @@ function renderTablaCatalogoProductos(texto){
   tbody.innerHTML = filtrados.map(p=>`
     <tr><td>${p.sku||'—'}</td><td>${p.nombre}</td><td>${p.categorias?.nombre||'—'}</td><td>${money(p.precio)}</td>
       <td><button class="btn chico ${p.mostrar_en_tienda_publica ? 'secundario' : ''}" onclick="alternarVisibilidadTienda('${p.id}', ${!p.mostrar_en_tienda_publica})">${p.mostrar_en_tienda_publica ? '👁️ Visible' : '🚫 Oculto'}</button></td>
-      <td><button class="btn chico secundario" onclick="abrirEditarProducto('${p.id}')">✏️ Editar</button></td></tr>
-  `).join('') || `<tr><td colspan="6" class="empty">Sin productos que coincidan</td></tr>`;
+      <td><button class="btn chico secundario" onclick="abrirEditarProducto('${p.id}')">✏️ Editar</button></td>
+      <td><button class="btn chico secundario" onclick="abrirFusionProducto('${p.id}')">🔀 Fusionar</button></td></tr>
+  `).join('') || `<tr><td colspan="7" class="empty">Sin productos que coincidan</td></tr>`;
+}
+
+/* ---------- Fusionar productos duplicados (mismo producto, distinto código/nombre entre sedes) ---------- */
+function abrirFusionProducto(productoId){
+  const p = ESTADO.catalogoProductos.find(x=>x.id===productoId);
+  if(!p) return;
+  const modal = document.getElementById('modal-contenido');
+  modal.innerHTML = `
+    <h3>Fusionar "${p.nombre}"</h3>
+    <p style="color:var(--texto2); font-size:14px; margin-bottom:12px;">Busca el producto duplicado. Se va a combinar TODO (inventario de ambas sedes, ventas, apartados, traslados, fotos, etc.) en uno solo, y se conservará el nombre/código/precio de <b>"${p.nombre}"</b>. El duplicado se borra.</p>
+    <input type="text" id="fusion-buscar" placeholder="Buscar el producto duplicado por nombre o código..." oninput="buscarProductoFusion('${productoId}', this.value)" autocomplete="off">
+    <div id="fusion-resultados" style="max-height:280px; overflow-y:auto; margin-top:10px;"></div>
+    <div class="acciones"><button class="btn secundario" onclick="cerrarModal()">Cerrar</button></div>
+  `;
+  document.getElementById('modal-bg').classList.add('activo');
+}
+
+function buscarProductoFusion(keepId, texto){
+  const t = texto.toLowerCase().trim();
+  const cont = document.getElementById('fusion-resultados');
+  if(t.length < 2){ cont.innerHTML = ''; return; }
+  const results = (ESTADO.catalogoProductos||[])
+    .filter(p => p.id !== keepId && (p.nombre.toLowerCase().includes(t) || (p.sku||'').toLowerCase().includes(t)))
+    .slice(0, 15);
+  cont.innerHTML = results.map(p => `
+    <div style="padding:10px; border-bottom:1px solid var(--borde); display:flex; justify-content:space-between; align-items:center; gap:10px;">
+      <div><div>${p.nombre}</div><div style="font-size:12px; color:var(--texto2);">${p.sku||'sin código'} — ${money(p.precio)}</div></div>
+      <button class="btn chico" onclick="confirmarFusionProducto('${keepId}','${p.id}')">Fusionar aquí</button>
+    </div>
+  `).join('') || `<div class="empty">Sin resultados</div>`;
+}
+
+async function confirmarFusionProducto(keepId, removeId){
+  const keep = ESTADO.catalogoProductos.find(x=>x.id===keepId);
+  const remove = ESTADO.catalogoProductos.find(x=>x.id===removeId);
+  if(!confirm(`¿Fusionar "${remove.nombre}" (${remove.sku||'sin código'}) dentro de "${keep.nombre}" (${keep.sku||'sin código'})?\n\nEsta acción no se puede deshacer.`)) return;
+
+  const modal = document.getElementById('modal-contenido');
+  modal.innerHTML = `<div class="empty">Fusionando productos...</div>`;
+
+  try {
+    // 1) Inventario: sumar cantidades por sede (si ambos productos tenían stock en la misma sede)
+    const { data: invRemove } = await sb.from('inventario').select('*').eq('producto_id', removeId);
+    for(const fila of (invRemove||[])){
+      const { data: existente } = await sb.from('inventario').select('cantidad').eq('sede_id', fila.sede_id).eq('producto_id', keepId).maybeSingle();
+      const nuevaCantidad = (existente?.cantidad || 0) + fila.cantidad;
+      await sb.from('inventario').upsert({ sede_id: fila.sede_id, producto_id: keepId, cantidad: nuevaCantidad }, { onConflict: 'sede_id,producto_id' });
+    }
+    await sb.from('inventario').delete().eq('producto_id', removeId);
+
+    // 2) Reasignar el historial y referencias al producto que se conserva
+    const tablasARelacionar = ['movimientos_inventario','venta_items','compra_items','motosan_grupo_motos','planes_ahorro','producto_colores','producto_fotos','traslados_inventario','apartados'];
+    for(const tabla of tablasARelacionar){
+      await sb.from(tabla).update({ producto_id: keepId }).eq('producto_id', removeId);
+    }
+
+    // 3) Borrar el producto duplicado
+    await sb.from('productos').delete().eq('id', removeId);
+
+    cerrarModal();
+    renderProductos();
+  } catch(err){
+    modal.innerHTML = `<div class="msg err">Error al fusionar: ${err.message}</div><div class="acciones"><button class="btn secundario" onclick="cerrarModal()">Cerrar</button></div>`;
+  }
 }
 
 async function alternarVisibilidadTienda(productoId, nuevoValor){
